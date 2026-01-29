@@ -1,0 +1,89 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb_checkpoints/
+
+# Data files (large datasets)
+*.csv
+*.xlsx
+*.xls
+*.parquet
+*.feather
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Model files
+*.model
+models/*.pkl
+models/*.h5
+models/*.pt
+models/*.pth
+!models/.gitkeep
+
+# Plots and outputs
+outputs/*
+plots/*
+figures/*
+!outputs/.gitkeep
+!plots/.gitkeep
+!figures/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# Cache
+.cache/
+*.tmp
+*.temp
+
+# Large input files (PDFs, zips)
+inputs/
+
+# Windows artifacts
+nul
+
+# 배포용 런타임 필수 데이터 (예외 - 반드시 맨 끝에 위치)
+!data/processed/alighting_cache.pkl
+!data/processed/interstation_distance_processed.csv
+!data/processed/congestion_long.csv
+!data/raw/fast_exit_line2.json
+
+# Workspace
+.claude/
+AGENTS.md
