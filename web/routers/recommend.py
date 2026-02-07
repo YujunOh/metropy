@@ -18,7 +18,7 @@ async def recommend(req: RecommendRequest):
         direction = registry.auto_direction(req.boarding, req.destination)
 
     try:
-        result = engine.recommend(req.boarding, req.destination, req.hour, direction)
+        result = engine.recommend(req.boarding, req.destination, req.hour, direction, req.dow)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -30,6 +30,7 @@ async def recommend(req: RecommendRequest):
             rank=int(row["rank"]),
             benefit=round(float(row["benefit"]), 2),
             penalty=round(float(row["penalty"]), 2),
+            load_factor=round(float(row["load_factor"]), 4),
         )
         for _, row in scores_df.iterrows()
     ]
@@ -44,11 +45,18 @@ async def recommend(req: RecommendRequest):
                 StationContribution(**c) for c in contribs
             ]
 
+    # Serialize load factors with string keys for JSON
+    load_factors_raw = result.get("load_factors", {})
+    load_factors_serialized = {
+        str(k): round(v, 4) for k, v in load_factors_raw.items()
+    } if load_factors_raw else None
+
     return RecommendResponse(
         boarding=result["boarding"],
         destination=result["destination"],
         hour=result["hour"],
         direction=direction,
+        dow=req.dow,
         alpha=result["alpha"],
         best_car=result["best_car"],
         best_score=round(float(result["best_score"]), 1),
@@ -59,6 +67,7 @@ async def recommend(req: RecommendRequest):
         intermediates=result["intermediates"],
         car_scores=car_scores,
         boarding_congestion=round(result["boarding_congestion"], 1) if result.get("boarding_congestion") else None,
+        load_factors=load_factors_serialized,
         data_sources=result.get("data_sources", []),
         station_contributions=contribs_serialized,
     )

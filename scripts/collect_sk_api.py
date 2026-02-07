@@ -1,32 +1,37 @@
 # -*- coding: utf-8 -*-
 """
-SK Open API Data Collector
-==========================
-Fetches car-level congestion and alighting rate data from SK Open API
-for Seoul Metro Line 2 stations.
+SK Open API Smart Data Collector
+==================================
+Seoul Metro Line 2 차량별 혼잡도/하차율 데이터 수집기.
 
-Endpoints:
-  1. congestionCar  - Per-car congestion (10 cars)
-  2. getOffCarRate   - Per-car alighting rate distribution
-  3. congestionTrain - Overall train congestion
+핵심 전략: 한 번 수집 → 캐시에 저장 → 런타임 API 호출 없이 서비스.
 
-These data transform SeatScore from estimation-based to measurement-based:
-  - congestionCar  → replaces B(c,h) boarding penalty
-  - getOffCarRate  → replaces w(c,s) facility weight
-  - congestionTrain → calibrates α(h) time multiplier
+수집 우선순위:
+  Phase 1: getOffCarRate (러시아워) - 좌석 추천에 가장 큰 영향
+  Phase 2: congestionCar (러시아워) - 탑승 패널티 계산
+  Phase 3: getOffCarRate (나머지 시간)
+  Phase 4: congestionCar (나머지 시간)
+  Phase 5: congestionTrain (선택적)
+
+사용법:
+  python scripts/collect_sk_api.py --test            # API 연결 테스트
+  python scripts/collect_sk_api.py --status          # 수집 현황 확인
+  python scripts/collect_sk_api.py --collect          # 스마트 수집 시작
+  python scripts/collect_sk_api.py --collect --limit 100  # 일일 한도 지정
+  python scripts/collect_sk_api.py --process          # 캐시 빌드
 """
 
 import json
 import time
 import pickle
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, date
 import sys
 
 try:
     import requests
 except ImportError:
-    print("Installing requests...")
+    print("requests 설치 중...")
     import subprocess
     subprocess.check_call([sys.executable, "-m", "pip", "install", "requests"])
     import requests
@@ -35,582 +40,778 @@ import numpy as np
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
-# SK Open API Configuration
+# ─── SK Open API 설정 ───────────────────────────────────────
 SK_API_KEY = "V4kZORPDLL4tosV1csaYr1lM98hEfT6B1TAjuRx7"
 SK_BASE_URL = "https://apis.openapi.sk.com/puzzle/subway/congestion/stat"
 
 HEADERS = {
     "accept": "application/json",
-    "Content-Type": "application/json",
-    "appkey": SK_API_KEY,
+    "appKey": SK_API_KEY,  # 반드시 대문자 K
 }
 
-# Line 2 Station Code Mapping
-# SK API uses station codes from Seoul Metro numbering
-# Format: 4-digit string "LLSS" where LL=line, SS=station sequence
+# ─── 2호선 역코드 매핑 (3자리) ──────────────────────────────
 LINE2_STATIONS = {
-    "시청":           "0201",
-    "을지로입구":     "0202",
-    "을지로3가":      "0203",
-    "을지로4가":      "0204",
-    "동대문역사문화공원": "0205",
-    "신당":           "0206",
-    "상왕십리":       "0207",
-    "왕십리":         "0208",
-    "한양대":         "0209",
-    "뚝섬":           "0210",
-    "성수":           "0211",
-    "건대입구":       "0212",
-    "구의":           "0213",
-    "강변":           "0214",
-    "잠실나루":       "0215",
-    "잠실":           "0216",
-    "잠실새내":       "0217",
-    "종합운동장":     "0218",
-    "삼성":           "0219",
-    "선릉":           "0220",
-    "역삼":           "0221",
-    "강남":           "0222",
-    "교대":           "0223",
-    "서초":           "0224",
-    "방배":           "0225",
-    "사당":           "0226",
-    "낙성대":         "0227",
-    "서울대입구":     "0228",
-    "봉천":           "0229",
-    "신림":           "0230",
-    "신대방":         "0231",
-    "구로디지털단지": "0232",
-    "대림":           "0233",
-    "신도림":         "0234",
-    "문래":           "0235",
-    "영등포구청":     "0236",
-    "당산":           "0237",
-    "합정":           "0238",
-    "홍대입구":       "0239",
-    "신촌":           "0240",
-    "이대":           "0241",
-    "아현":           "0242",
-    "충정로":         "0243",
+    "시청": "201", "을지로입구": "202", "을지로3가": "203",
+    "을지로4가": "204", "동대문역사문화공원": "205", "신당": "206",
+    "상왕십리": "207", "왕십리": "208", "한양대": "209",
+    "뚝섬": "210", "성수": "211", "건대입구": "212",
+    "구의": "213", "강변": "214", "잠실나루": "215",
+    "잠실": "216", "잠실새내": "217", "종합운동장": "218",
+    "삼성": "219", "선릉": "220", "역삼": "221",
+    "강남": "222", "교대": "223", "서초": "224",
+    "방배": "225", "사당": "226", "낙성대": "227",
+    "서울대입구": "228", "봉천": "229", "신림": "230",
+    "신대방": "231", "구로디지털단지": "232", "대림": "233",
+    "신도림": "234", "문래": "235", "영등포구청": "236",
+    "당산": "237", "합정": "238", "홍대입구": "239",
+    "신촌": "240", "이대": "241", "아현": "242",
+    "충정로": "243",
 }
 
-# Day of week mapping
-DOW_MAP = {
-    0: "MON", 1: "TUE", 2: "WED", 3: "THU",
-    4: "FRI", 5: "SAT", 6: "SUN",
+# 운행 시간 (05시 ~ 23시)
+ALL_HOURS = list(range(5, 24))
+
+# 러시아워 (우선 수집)
+RUSH_HOURS = [7, 8, 9, 17, 18, 19]
+NON_RUSH_HOURS = [h for h in ALL_HOURS if h not in RUSH_HOURS]
+
+# 엔드포인트 정의
+ENDPOINTS = {
+    "getoff":  ("get-off/stations", "getOffCarRate"),   # 하차율 (최우선)
+    "car":     ("car/stations",     "congestionCar"),    # 차량 혼잡도
+    "train":   ("train/stations",   "congestionTrain"),  # 열차 혼잡도 (선택)
 }
 
-HOURS = list(range(5, 24))  # 05 ~ 23
+# 진행 상황 파일
+PROGRESS_FILE = PROJECT_ROOT / "data_raw" / "sk_api" / "collection_progress.json"
+RAW_DATA_DIR = PROJECT_ROOT / "data_raw" / "sk_api"
 
 
-def fetch_car_congestion(station_code, dow="MON", hh="08"):
+# ─── 진행 상황 관리 ─────────────────────────────────────────
+
+def load_progress():
+    """수집 진행 상황 로드."""
+    if PROGRESS_FILE.exists():
+        with open(PROGRESS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {
+        "collected": {},  # "endpoint|station|dow|hour" → timestamp
+        "errors": {},     # "endpoint|station|dow|hour" → error count
+        "daily_log": {},  # "YYYY-MM-DD" → call count
+        "total_calls": 0,
+        "total_cost_won": 0,
+    }
+
+
+def save_progress(progress):
+    """수집 진행 상황 저장."""
+    PROGRESS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(PROGRESS_FILE, "w", encoding="utf-8") as f:
+        json.dump(progress, f, ensure_ascii=False, indent=2)
+
+
+def is_collected(progress, endpoint, station, dow, hour):
+    """이미 수집된 데이터인지 확인."""
+    key = f"{endpoint}|{station}|{dow}|{hour}"
+    return key in progress["collected"]
+
+
+def mark_collected(progress, endpoint, station, dow, hour):
+    """수집 완료로 표시."""
+    key = f"{endpoint}|{station}|{dow}|{hour}"
+    progress["collected"][key] = datetime.now().isoformat()
+    today = date.today().isoformat()
+    progress["daily_log"][today] = progress["daily_log"].get(today, 0) + 1
+    progress["total_calls"] += 1
+
+
+def get_today_calls(progress):
+    """오늘 호출 수 확인."""
+    today = date.today().isoformat()
+    return progress["daily_log"].get(today, 0)
+
+
+# ─── API 호출 함수 ──────────────────────────────────────────
+
+def fetch_endpoint(endpoint_key, station_code, dow="MON", hh="08"):
     """
-    Fetch per-car congestion for a station.
-
-    GET /puzzle/subway/congestion/stat/car/stations/{stationCode}
-    Returns array of 10 congestion values (one per car).
+    범용 API 호출 함수.
+    Returns: (data_dict, status_code) or (None, status_code)
     """
-    url = f"{SK_BASE_URL}/car/stations/{station_code}"
+    path, _ = ENDPOINTS[endpoint_key]
+    url = f"{SK_BASE_URL}/{path}/{station_code}"
     params = {"dow": dow, "hh": str(hh).zfill(2)}
 
     try:
         resp = requests.get(url, headers=HEADERS, params=params, timeout=15)
         if resp.status_code == 200:
-            data = resp.json()
-            return data
+            return resp.json(), 200
+        elif resp.status_code == 429:
+            return None, 429  # 한도 초과
         elif resp.status_code == 404:
-            return None
+            return None, 404  # 데이터 없음
         else:
-            print(f"  [car] {station_code} {dow} {hh}: HTTP {resp.status_code}")
-            return None
+            return None, resp.status_code
+    except requests.exceptions.Timeout:
+        return None, -1
     except Exception as e:
-        print(f"  [car] {station_code} {dow} {hh}: Error {e}")
-        return None
+        return None, -2
 
 
-def fetch_getoff_car_rate(station_code, dow="MON", hh="08"):
+# ─── 수집 전략 ───────────────────────────────────────────────
+
+def build_collection_plan(dow="MON", include_train=False):
     """
-    Fetch per-car alighting rate for a station.
+    우선순위 기반 수집 계획 생성.
 
-    GET /puzzle/subway/congestion/stat/get-off/stations/{stationCode}
-    Returns array of 10 alighting rate values (one per car).
+    우선순위:
+      1. getoff + 러시아워 (좌석 추천 핵심)
+      2. car + 러시아워 (탑승 패널티)
+      3. getoff + 나머지 시간
+      4. car + 나머지 시간
+      5. train (선택적)
     """
-    url = f"{SK_BASE_URL}/get-off/stations/{station_code}"
-    params = {"dow": dow, "hh": str(hh).zfill(2)}
+    plan = []
+    stations = list(LINE2_STATIONS.keys())
 
-    try:
-        resp = requests.get(url, headers=HEADERS, params=params, timeout=15)
-        if resp.status_code == 200:
-            data = resp.json()
-            return data
-        elif resp.status_code == 404:
-            return None
-        else:
-            print(f"  [getoff] {station_code} {dow} {hh}: HTTP {resp.status_code}")
-            return None
-    except Exception as e:
-        print(f"  [getoff] {station_code} {dow} {hh}: Error {e}")
-        return None
+    # Phase 1: getoff × 러시아워
+    for station in stations:
+        for hour in RUSH_HOURS:
+            plan.append(("getoff", station, dow, hour, "P1-getoff-rush"))
+
+    # Phase 2: car × 러시아워
+    for station in stations:
+        for hour in RUSH_HOURS:
+            plan.append(("car", station, dow, hour, "P2-car-rush"))
+
+    # Phase 3: getoff × 나머지 시간
+    for station in stations:
+        for hour in NON_RUSH_HOURS:
+            plan.append(("getoff", station, dow, hour, "P3-getoff-rest"))
+
+    # Phase 4: car × 나머지 시간
+    for station in stations:
+        for hour in NON_RUSH_HOURS:
+            plan.append(("car", station, dow, hour, "P4-car-rest"))
+
+    # Phase 5: train (선택적)
+    if include_train:
+        for station in stations:
+            for hour in ALL_HOURS:
+                plan.append(("train", station, dow, hour, "P5-train"))
+
+    return plan
 
 
-def fetch_train_congestion(station_code, dow="MON", hh="08"):
+def smart_collect(daily_limit=100, delay=1.0, dow="MON", include_train=False,
+                  cost_per_call=33):
     """
-    Fetch overall train congestion for a station.
+    스마트 배치 수집.
 
-    GET /puzzle/subway/congestion/stat/train/stations/{stationCode}
-    Returns single congestion value for the train.
-    """
-    url = f"{SK_BASE_URL}/train/stations/{station_code}"
-    params = {"dow": dow, "hh": str(hh).zfill(2)}
-
-    try:
-        resp = requests.get(url, headers=HEADERS, params=params, timeout=15)
-        if resp.status_code == 200:
-            data = resp.json()
-            return data
-        elif resp.status_code == 404:
-            return None
-        else:
-            print(f"  [train] {station_code} {dow} {hh}: HTTP {resp.status_code}")
-            return None
-    except Exception as e:
-        print(f"  [train] {station_code} {dow} {hh}: Error {e}")
-        return None
-
-
-def test_api_connection():
-    """Test API with a known station to verify connectivity and code format."""
-    print("=== Testing SK Open API Connection ===")
-    test_station = "0222"  # 강남
-    test_name = "강남"
-
-    for endpoint_name, fetch_fn in [
-        ("congestionCar", fetch_car_congestion),
-        ("getOffCarRate", fetch_getoff_car_rate),
-        ("congestionTrain", fetch_train_congestion),
-    ]:
-        result = fetch_fn(test_station, "MON", "08")
-        if result:
-            print(f"  {endpoint_name}: OK")
-            print(f"    Response keys: {list(result.keys()) if isinstance(result, dict) else type(result)}")
-            # Print first few values
-            if isinstance(result, dict):
-                for key, val in list(result.items())[:5]:
-                    print(f"    {key}: {val}")
-        else:
-            print(f"  {endpoint_name}: FAILED (station code {test_station} may be wrong)")
-
-    # If all failed, try alternative code formats
-    print("\n--- Trying alternative station code formats ---")
-    alt_codes = ["222", "0222", "2222", "1002000222", "201"]
-
-    for code in alt_codes:
-        result = fetch_car_congestion(code, "MON", "08")
-        if result:
-            print(f"  Code format '{code}' WORKS!")
-            return code
-        else:
-            print(f"  Code format '{code}': no data")
-        time.sleep(0.3)
-
-    return None
-
-
-def collect_all_data(
-    stations=None,
-    days=None,
-    hours=None,
-    output_dir=None,
-    delay=0.3,
-):
-    """
-    Collect data for all stations, days, and hours.
+    - 우선순위 순서대로 수집
+    - 이미 수집된 데이터는 건너뜀
+    - 일일 한도 도달 시 자동 중단
+    - 429 에러 시 자동 중단
+    - 진행 상황 실시간 저장
 
     Args:
-        stations: Dict of {name: code}. Default: all Line 2 stations.
-        days: List of day codes. Default: ['MON', 'SAT', 'SUN']
-        hours: List of hours. Default: 5-23
-        output_dir: Directory to save results.
-        delay: Delay between API calls (seconds).
+        daily_limit: 일일 API 호출 한도 (Basic=100, Hackathon≈100/day equiv)
+        delay: API 호출 간 대기 시간 (초)
+        dow: 요일 (기본 MON=평일 대표)
+        include_train: train 엔드포인트도 수집할지
+        cost_per_call: 건당 비용 (원) - Basic=33, Hackathon=11
     """
-    if stations is None:
-        stations = LINE2_STATIONS
-    if days is None:
-        days = ["MON", "SAT", "SUN"]  # Weekday + Weekend representative
-    if hours is None:
-        hours = HOURS
-    if output_dir is None:
-        output_dir = PROJECT_ROOT / "data_raw" / "sk_api"
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    progress = load_progress()
+    plan = build_collection_plan(dow, include_train)
 
-    total_calls = len(stations) * len(days) * len(hours) * 3  # 3 endpoints
+    # 이미 수집된 항목 필터링
+    remaining = [
+        (ep, st, d, h, phase)
+        for ep, st, d, h, phase in plan
+        if not is_collected(progress, ep, st, d, h)
+    ]
+
+    today_calls = get_today_calls(progress)
+    budget_remaining = daily_limit - today_calls
+
     print(f"\n{'='*60}")
-    print(f"COLLECTING SK OPEN API DATA")
+    print(f"  SK API 스마트 수집기")
     print(f"{'='*60}")
-    print(f"Stations: {len(stations)}")
-    print(f"Days: {days}")
-    print(f"Hours: {len(hours)} ({min(hours)}-{max(hours)})")
-    print(f"Total API calls: ~{total_calls}")
-    print(f"Estimated time: ~{total_calls * delay / 60:.1f} minutes")
+    print(f"  전체 계획:     {len(plan)} 건")
+    print(f"  수집 완료:     {len(plan) - len(remaining)} 건")
+    print(f"  남은 수집:     {len(remaining)} 건")
+    print(f"  오늘 호출:     {today_calls} / {daily_limit}")
+    print(f"  오늘 가능:     {budget_remaining} 건")
+    print(f"  예상 비용:     {min(budget_remaining, len(remaining)) * cost_per_call:,}원")
+    print(f"  전체 완료까지: ~{max(1, len(remaining) // daily_limit)} 일")
+    print(f"  건당 비용:     {cost_per_call}원")
+    print(f"{'='*60}\n")
 
-    # Data storage
-    car_congestion_data = []
-    getoff_rate_data = []
-    train_congestion_data = []
-    call_count = 0
-    error_count = 0
+    if not remaining:
+        print("[OK] 모든 데이터가 이미 수집되었습니다!")
+        return progress
 
-    for station_name, station_code in stations.items():
-        print(f"\n--- {station_name} ({station_code}) ---")
+    if budget_remaining <= 0:
+        print("[STOP] 오늘 일일 한도에 도달했습니다. 내일 다시 실행하세요.")
+        return progress
 
-        for dow in days:
-            for hour in hours:
-                hh = str(hour).zfill(2)
+    # 수집 시작
+    collected_this_session = 0
+    current_phase = None
+    session_errors = 0
+    raw_results = _load_raw_results()
 
-                # 1. Car congestion
-                result = fetch_car_congestion(station_code, dow, hh)
-                call_count += 1
-                if result:
-                    car_congestion_data.append({
-                        "station": station_name,
-                        "station_code": station_code,
-                        "dow": dow,
-                        "hour": hour,
-                        "data": result,
-                    })
-                else:
-                    error_count += 1
+    for ep, station, d, hour, phase in remaining:
+        # 일일 한도 확인
+        if collected_this_session >= budget_remaining:
+            print(f"\n[STOP] 일일 한도 도달 ({daily_limit}건). 내일 다시 실행하세요.")
+            break
 
-                time.sleep(delay)
+        # Phase 변경 알림
+        if phase != current_phase:
+            current_phase = phase
+            print(f"\n--- {phase} ---")
 
-                # 2. Get-off car rate
-                result = fetch_getoff_car_rate(station_code, dow, hh)
-                call_count += 1
-                if result:
-                    getoff_rate_data.append({
-                        "station": station_name,
-                        "station_code": station_code,
-                        "dow": dow,
-                        "hour": hour,
-                        "data": result,
-                    })
-                else:
-                    error_count += 1
+        # API 호출
+        code = LINE2_STATIONS[station]
+        data, status = fetch_endpoint(ep, code, d, str(hour).zfill(2))
 
-                time.sleep(delay)
+        if status == 429:
+            print(f"\n[STOP] 429 한도 초과! 진행 상황이 저장되었습니다.")
+            print(f"  수집된 데이터: {collected_this_session}건")
+            save_progress(progress)
+            _save_raw_results(raw_results)
+            return progress
 
-                # 3. Train congestion
-                result = fetch_train_congestion(station_code, dow, hh)
-                call_count += 1
-                if result:
-                    train_congestion_data.append({
-                        "station": station_name,
-                        "station_code": station_code,
-                        "dow": dow,
-                        "hour": hour,
-                        "data": result,
-                    })
-                else:
-                    error_count += 1
+        if status == 200 and data:
+            mark_collected(progress, ep, station, d, hour)
+            collected_this_session += 1
 
-                time.sleep(delay)
+            # raw 결과 저장
+            result_key = f"{ep}|{station}|{d}|{hour}"
+            raw_results[result_key] = data
 
-                # Progress
-                if call_count % 50 == 0:
-                    print(f"  Progress: {call_count}/{total_calls} calls "
-                          f"({error_count} errors)")
+            # 진행 상황 표시
+            total_done = len(progress["collected"])
+            pct = total_done / len(plan) * 100
+            if collected_this_session % 10 == 0:
+                print(f"  [{pct:5.1f}%] {ep:6s} | {station:10s} | {d} {hour:02d}시 "
+                      f"| 오늘 {collected_this_session}건 | 전체 {total_done}/{len(plan)}")
+        else:
+            session_errors += 1
+            err_key = f"{ep}|{station}|{d}|{hour}"
+            progress["errors"][err_key] = progress["errors"].get(err_key, 0) + 1
 
-        # Save intermediate results per station
-        _save_intermediate(output_dir, station_name,
-                          car_congestion_data, getoff_rate_data, train_congestion_data)
+            if session_errors > 10:
+                print(f"\n[WARN] 에러가 {session_errors}건 누적되었습니다.")
 
-    # Save final results
+        # 10건마다 중간 저장
+        if collected_this_session % 10 == 0 and collected_this_session > 0:
+            save_progress(progress)
+            _save_raw_results(raw_results)
+
+        time.sleep(delay)
+
+    # 최종 저장
+    save_progress(progress)
+    _save_raw_results(raw_results)
+
+    progress["total_cost_won"] = progress["total_calls"] * cost_per_call
+
     print(f"\n{'='*60}")
-    print(f"COLLECTION COMPLETE")
+    print(f"  세션 완료")
     print(f"{'='*60}")
-    print(f"Total calls: {call_count}")
-    print(f"Errors: {error_count}")
-    print(f"Car congestion records: {len(car_congestion_data)}")
-    print(f"Get-off rate records: {len(getoff_rate_data)}")
-    print(f"Train congestion records: {len(train_congestion_data)}")
+    print(f"  이번 세션:   {collected_this_session} 건 수집")
+    print(f"  세션 에러:   {session_errors} 건")
+    print(f"  누적 수집:   {len(progress['collected'])} / {len(plan)} 건")
+    print(f"  누적 비용:   약 {progress['total_cost_won']:,}원")
+    print(f"{'='*60}")
 
-    # Save all data
-    save_all_data(output_dir, car_congestion_data, getoff_rate_data, train_congestion_data)
-
-    return car_congestion_data, getoff_rate_data, train_congestion_data
+    save_progress(progress)
+    return progress
 
 
-def _save_intermediate(output_dir, station_name, car_data, getoff_data, train_data):
-    """Save intermediate results during collection."""
-    pass  # Saves happen at the end for simplicity
+# ─── Raw 결과 저장/로드 ─────────────────────────────────────
+
+def _load_raw_results():
+    """기존 raw 결과 로드."""
+    raw_path = RAW_DATA_DIR / "raw_results.json"
+    if raw_path.exists():
+        with open(raw_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
 
 
-def save_all_data(output_dir, car_data, getoff_data, train_data):
-    """Save all collected data to JSON and processed pickle files."""
-    output_dir = Path(output_dir)
-
-    # Raw JSON
-    with open(output_dir / "car_congestion_raw.json", "w", encoding="utf-8") as f:
-        json.dump(car_data, f, ensure_ascii=False, indent=2, default=str)
-
-    with open(output_dir / "getoff_rate_raw.json", "w", encoding="utf-8") as f:
-        json.dump(getoff_data, f, ensure_ascii=False, indent=2, default=str)
-
-    with open(output_dir / "train_congestion_raw.json", "w", encoding="utf-8") as f:
-        json.dump(train_data, f, ensure_ascii=False, indent=2, default=str)
-
-    print(f"Raw data saved to: {output_dir}")
-
-    # Process into lookup caches
-    process_sk_data(output_dir)
+def _save_raw_results(results):
+    """Raw 결과 저장."""
+    RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    raw_path = RAW_DATA_DIR / "raw_results.json"
+    with open(raw_path, "w", encoding="utf-8") as f:
+        json.dump(results, f, ensure_ascii=False, default=str)
 
 
-def process_sk_data(data_dir):
+# ─── 데이터 처리 (Raw → 캐시) ───────────────────────────────
+
+def process_to_caches():
     """
-    Process raw SK API data into lookup caches for SeatScore.
+    수집된 Raw 데이터를 SeatScore용 pickle 캐시로 변환.
 
-    Creates:
-      - car_congestion_cache.pkl: (station, hour, dow) → [10 car congestion values]
-      - getoff_rate_cache.pkl: (station, hour, dow) → [10 car alighting rates]
-      - train_congestion_cache.pkl: (station, hour, dow) → train congestion value
+    생성 파일:
+      - car_congestion_cache.pkl: (station, hour, dow) → [10 values]
+      - getoff_rate_cache.pkl:    (station, hour, dow) → [10 values]
+      - train_congestion_cache.pkl: (station, hour, dow) → float
     """
-    data_dir = Path(data_dir)
+    raw_results = _load_raw_results()
+    if not raw_results:
+        print("[ERROR] Raw 데이터가 없습니다. --collect 먼저 실행하세요.")
+        return
+
     processed_dir = PROJECT_ROOT / "data_processed"
     processed_dir.mkdir(parents=True, exist_ok=True)
 
-    # Car congestion
-    car_path = data_dir / "car_congestion_raw.json"
-    if car_path.exists():
-        with open(car_path, "r", encoding="utf-8") as f:
-            car_data = json.load(f)
+    car_cache = {}
+    getoff_cache = {}
+    train_cache = {}
 
-        car_cache = {}
-        for entry in car_data:
-            station = entry["station"]
-            hour = entry["hour"]
-            dow = entry["dow"]
-            data = entry["data"]
+    for key, data in raw_results.items():
+        parts = key.split("|")
+        if len(parts) != 4:
+            continue
+        ep, station, dow, hour = parts
+        hour = int(hour)
 
-            # Extract car congestion array
-            # API response structure varies; handle common formats
-            car_values = _extract_car_values(data, "congestionCar")
-            if car_values:
-                car_cache[(station, hour, dow)] = car_values
+        if ep == "car":
+            values = _extract_car_values(data, "congestionCar")
+            if values and len(values) == 10:
+                car_cache[(station, hour, dow)] = values
 
+        elif ep == "getoff":
+            values = _extract_car_values(data, "getOffCarRate")
+            if values and len(values) == 10:
+                getoff_cache[(station, hour, dow)] = values
+
+        elif ep == "train":
+            val = _extract_train_value(data)
+            if val is not None:
+                train_cache[(station, hour, dow)] = val
+
+    # 저장
+    if car_cache:
         with open(processed_dir / "car_congestion_cache.pkl", "wb") as f:
             pickle.dump(car_cache, f)
-        print(f"Car congestion cache: {len(car_cache)} entries")
+        print(f"[OK] car_congestion_cache.pkl: {len(car_cache)} entries")
 
-    # Get-off rate
-    getoff_path = data_dir / "getoff_rate_raw.json"
-    if getoff_path.exists():
-        with open(getoff_path, "r", encoding="utf-8") as f:
-            getoff_data = json.load(f)
-
-        getoff_cache = {}
-        for entry in getoff_data:
-            station = entry["station"]
-            hour = entry["hour"]
-            dow = entry["dow"]
-            data = entry["data"]
-
-            car_values = _extract_car_values(data, "getOffCarRate")
-            if car_values:
-                getoff_cache[(station, hour, dow)] = car_values
-
+    if getoff_cache:
         with open(processed_dir / "getoff_rate_cache.pkl", "wb") as f:
             pickle.dump(getoff_cache, f)
-        print(f"Get-off rate cache: {len(getoff_cache)} entries")
+        print(f"[OK] getoff_rate_cache.pkl: {len(getoff_cache)} entries")
 
-    # Train congestion
-    train_path = data_dir / "train_congestion_raw.json"
-    if train_path.exists():
-        with open(train_path, "r", encoding="utf-8") as f:
-            train_data = json.load(f)
-
-        train_cache = {}
-        for entry in train_data:
-            station = entry["station"]
-            hour = entry["hour"]
-            dow = entry["dow"]
-            data = entry["data"]
-
-            train_val = _extract_train_value(data)
-            if train_val is not None:
-                train_cache[(station, hour, dow)] = train_val
-
+    if train_cache:
         with open(processed_dir / "train_congestion_cache.pkl", "wb") as f:
             pickle.dump(train_cache, f)
-        print(f"Train congestion cache: {len(train_cache)} entries")
+        print(f"[OK] train_congestion_cache.pkl: {len(train_cache)} entries")
+
+    total = len(car_cache) + len(getoff_cache) + len(train_cache)
+    print(f"\n전체 캐시: {total} entries (car={len(car_cache)}, "
+          f"getoff={len(getoff_cache)}, train={len(train_cache)})")
+
+    # 커버리지 통계
+    all_stations = set(LINE2_STATIONS.keys())
+    for cache_name, cache in [("getoff", getoff_cache), ("car", car_cache)]:
+        stations_with_data = set(s for s, h, d in cache.keys())
+        coverage = len(stations_with_data) / len(all_stations) * 100
+        hours_per_station = len(cache) / max(len(stations_with_data), 1)
+        print(f"  {cache_name}: {len(stations_with_data)}/{len(all_stations)}역 "
+              f"({coverage:.0f}%), 역당 ~{hours_per_station:.0f}시간대")
 
 
 def _extract_car_values(data, key_hint="congestionCar"):
     """
-    Extract array of 10 car values from API response.
+    API 응답에서 10개 차량 값 추출.
 
-    The SK API response structure may vary. Common formats:
-    - {"contents": {"stat": [{"data": {"congestionCar": "30|35|..."}}, ...]}}
-    - {"data": {"congestionCar": [30, 35, ...]}}
-    - {"result": {"congestionCar": "30|35|40|..."}}
+    실제 응답 구조:
+    {
+      "contents": {
+        "stat": [
+          {
+            "updnLine": 1,  // 방향
+            "data": [
+              {"dow": "MON", "hh": "08", "mm": "00",
+               "getOffCarRate": [7, 10, 10, 15, 12, 11, 11, 9, 8, 7]},
+              {"dow": "MON", "hh": "08", "mm": "10", ...},
+              ...
+            ]
+          }
+        ]
+      }
+    }
     """
-    if not data:
+    if not data or not isinstance(data, dict):
         return None
 
-    # Try direct access
-    if isinstance(data, dict):
-        # Nested: contents.stat[].data
-        if "contents" in data:
-            contents = data["contents"]
-            if "stat" in contents:
-                stats = contents["stat"]
-                if isinstance(stats, list):
-                    all_values = []
-                    for stat in stats:
-                        if "data" in stat:
-                            val = stat["data"].get(key_hint)
-                            if val:
-                                if isinstance(val, str):
-                                    parts = [float(x) for x in val.split("|") if x]
-                                    all_values.append(parts)
-                                elif isinstance(val, list):
-                                    all_values.append([float(x) for x in val])
-                    # Average across time intervals within the hour
-                    if all_values:
-                        arr = np.array(all_values)
-                        return arr.mean(axis=0).tolist()
+    if "contents" not in data:
+        return None
 
-        # Direct data access
-        for possible_key in [key_hint, "data", "result"]:
-            if possible_key in data:
-                val = data[possible_key]
-                if isinstance(val, str) and "|" in val:
-                    return [float(x) for x in val.split("|") if x]
-                elif isinstance(val, list):
-                    return [float(x) for x in val]
-                elif isinstance(val, dict):
-                    inner = val.get(key_hint)
-                    if inner:
-                        if isinstance(inner, str) and "|" in inner:
-                            return [float(x) for x in inner.split("|") if x]
-                        elif isinstance(inner, list):
-                            return [float(x) for x in inner]
+    contents = data["contents"]
+    if "stat" not in contents:
+        return None
 
+    stats = contents["stat"]
+    if not isinstance(stats, list) or not stats:
+        return None
+
+    all_values = []
+
+    for stat_entry in stats:
+        data_list = stat_entry.get("data")
+        if not isinstance(data_list, list):
+            # data가 dict인 이전 형식도 지원
+            if isinstance(data_list, dict):
+                val = data_list.get(key_hint)
+                if val:
+                    parsed = _parse_car_array(val)
+                    if parsed:
+                        all_values.append(parsed)
+            continue
+
+        # data가 list인 경우 (10분 간격 측정값 리스트)
+        for measurement in data_list:
+            if not isinstance(measurement, dict):
+                continue
+            val = measurement.get(key_hint)
+            if val is not None:
+                parsed = _parse_car_array(val)
+                if parsed:
+                    all_values.append(parsed)
+
+    if all_values:
+        # 모든 10분 간격의 평균
+        return np.array(all_values).mean(axis=0).tolist()
+
+    return None
+
+
+def _parse_car_array(val):
+    """차량별 값을 파싱 (리스트 또는 파이프 구분 문자열)."""
+    if isinstance(val, list) and len(val) == 10:
+        try:
+            return [float(x) for x in val]
+        except (ValueError, TypeError):
+            return None
+    elif isinstance(val, str) and "|" in val:
+        parts = [float(x) for x in val.split("|") if x]
+        if len(parts) == 10:
+            return parts
     return None
 
 
 def _extract_train_value(data):
-    """Extract single train congestion value from API response."""
-    if not data:
+    """API 응답에서 열차 혼잡도 값 추출."""
+    if not data or not isinstance(data, dict):
         return None
 
-    if isinstance(data, dict):
+    if "contents" not in data:
+        return None
+
+    contents = data["contents"]
+    if "stat" not in contents:
+        return None
+
+    stats = contents["stat"]
+    if not isinstance(stats, list):
+        return None
+
+    values = []
+    for stat_entry in stats:
+        data_list = stat_entry.get("data")
+        if isinstance(data_list, list):
+            for measurement in data_list:
+                if isinstance(measurement, dict):
+                    val = measurement.get("congestionTrain")
+                    if val is not None:
+                        try:
+                            values.append(float(val))
+                        except (ValueError, TypeError):
+                            pass
+        elif isinstance(data_list, dict):
+            val = data_list.get("congestionTrain")
+            if val is not None:
+                try:
+                    values.append(float(val))
+                except (ValueError, TypeError):
+                    pass
+
+    return float(np.mean(values)) if values else None
+
+
+# ─── 상태 확인 ───────────────────────────────────────────────
+
+def show_status():
+    """수집 현황 표시."""
+    progress = load_progress()
+    plan_full = build_collection_plan("MON", include_train=True)
+    plan_core = build_collection_plan("MON", include_train=False)
+
+    print(f"\n{'='*60}")
+    print(f"  SK API 수집 현황")
+    print(f"{'='*60}")
+    print(f"  누적 호출:     {progress['total_calls']} 건")
+    print(f"  수집 완료:     {len(progress['collected'])} 건")
+    print(f"  에러 기록:     {len(progress['errors'])} 건")
+
+    today = date.today().isoformat()
+    today_calls = progress["daily_log"].get(today, 0)
+    print(f"  오늘 호출:     {today_calls} 건")
+    print()
+
+    # Phase별 현황
+    phases = {
+        "P1-getoff-rush": 0, "P2-car-rush": 0,
+        "P3-getoff-rest": 0, "P4-car-rest": 0,
+        "P5-train": 0,
+    }
+    phase_totals = {k: 0 for k in phases}
+
+    for ep, st, d, h, phase in plan_full:
+        phase_totals[phase] = phase_totals.get(phase, 0) + 1
+        if is_collected(progress, ep, st, d, h):
+            phases[phase] = phases.get(phase, 0) + 1
+
+    print("  Phase별 진행:")
+    for phase, done in phases.items():
+        total = phase_totals[phase]
+        pct = done / total * 100 if total > 0 else 0
+        bar = "#" * int(pct / 5) + "-" * (20 - int(pct / 5))
+        print(f"    {phase:20s} [{bar}] {done:4d}/{total:4d} ({pct:.0f}%)")
+
+    # 코어(getoff+car) 진행률
+    core_total = len(plan_core)
+    core_done = sum(1 for ep, st, d, h, _ in plan_core
+                    if is_collected(progress, ep, st, d, h))
+    print(f"\n  코어 데이터:   {core_done}/{core_total} "
+          f"({core_done/core_total*100:.1f}%)")
+
+    # 일별 수집 내역
+    if progress["daily_log"]:
+        print(f"\n  일별 수집 내역:")
+        for day, count in sorted(progress["daily_log"].items())[-7:]:
+            print(f"    {day}: {count}건")
+
+    print(f"{'='*60}")
+
+
+# ─── 출구 통계 수집 ──────────────────────────────────────────
+
+EXIT_STAT_URL = "https://apis.openapi.sk.com/puzzle/subway/exit/stat/dow/stations"
+
+
+def collect_exit_stats(delay=1.0):
+    """
+    전 역 출구 통행자 수 수집 (요일별).
+    각 역당 1건 호출 → 모든 출구 × 모든 요일 데이터 반환.
+    43역 = 43건.
+    """
+    progress = load_progress()
+    raw_results = _load_raw_results()
+
+    print(f"\n{'='*60}")
+    print(f"  출구 통계 수집 (요일별)")
+    print(f"{'='*60}")
+
+    collected = 0
+    for station, code in LINE2_STATIONS.items():
+        key = f"exit_dow|{station}|ALL|0"
+        if key in progress["collected"]:
+            continue
+
+        url = f"{EXIT_STAT_URL}/{code}"
+        try:
+            resp = requests.get(url, headers=HEADERS, timeout=15)
+            if resp.status_code == 200:
+                data = resp.json()
+                raw_results[key] = data
+                progress["collected"][key] = datetime.now().isoformat()
+                today = date.today().isoformat()
+                progress["daily_log"][today] = progress["daily_log"].get(today, 0) + 1
+                progress["total_calls"] += 1
+                collected += 1
+                print(f"  [OK] {station} ({code}): {len(data.get('contents', {}).get('stat', []))} entries")
+            elif resp.status_code == 429:
+                print(f"  [STOP] 429 한도 초과!")
+                break
+            else:
+                print(f"  [FAIL] {station}: HTTP {resp.status_code}")
+        except Exception as e:
+            print(f"  [ERR] {station}: {e}")
+
+        if collected % 5 == 0 and collected > 0:
+            save_progress(progress)
+            _save_raw_results(raw_results)
+
+        time.sleep(delay)
+
+    save_progress(progress)
+    _save_raw_results(raw_results)
+    print(f"\n  출구 통계 수집 완료: {collected}건")
+    return collected
+
+
+def process_exit_stats():
+    """
+    출구 통계 데이터를 캐시로 변환.
+
+    출구 번호 → 차량 번호 매핑은 fast_exit 데이터와 연동.
+    결과: exit_traffic_cache.pkl
+        (station, dow) → {exit_no: user_count}
+    """
+    raw_results = _load_raw_results()
+    exit_cache = {}
+
+    for key, data in raw_results.items():
+        if not key.startswith("exit_dow|"):
+            continue
+
+        station = key.split("|")[1]
+        if not isinstance(data, dict) or "contents" not in data:
+            continue
+
+        stat = data["contents"].get("stat", [])
+        for entry in stat:
+            dow = entry.get("dow", "MON")
+            exit_no = entry.get("exit", "0")
+            count = entry.get("userCount", 0)
+
+            cache_key = (station, dow)
+            if cache_key not in exit_cache:
+                exit_cache[cache_key] = {}
+            exit_cache[cache_key][exit_no] = count
+
+    if exit_cache:
+        processed_dir = PROJECT_ROOT / "data_processed"
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        with open(processed_dir / "exit_traffic_cache.pkl", "wb") as f:
+            pickle.dump(exit_cache, f)
+        print(f"[OK] exit_traffic_cache.pkl: {len(exit_cache)} entries")
+
+        # 통계
+        stations_with_data = set(s for s, d in exit_cache.keys())
+        print(f"  {len(stations_with_data)}/{len(LINE2_STATIONS)}역 "
+              f"({len(stations_with_data)/len(LINE2_STATIONS)*100:.0f}%)")
+    else:
+        print("[WARN] 출구 통계 데이터가 없습니다.")
+
+
+# ─── 테스트 ──────────────────────────────────────────────────
+
+def test_connection():
+    """API 연결 테스트 (최소 호출: 1건)."""
+    print("\n=== SK API 연결 테스트 ===\n")
+
+    # 강남역 1건만 테스트
+    data, status = fetch_endpoint("getoff", "222", "MON", "08")
+
+    if status == 200 and data:
+        print(f"[OK] 연결 성공! (HTTP {status})")
         if "contents" in data:
-            contents = data["contents"]
-            if "stat" in contents:
-                stats = contents["stat"]
-                if isinstance(stats, list):
-                    values = []
-                    for stat in stats:
-                        if "data" in stat:
-                            val = stat["data"].get("congestionTrain")
-                            if val is not None:
-                                values.append(float(val))
-                    if values:
-                        return np.mean(values)
+            c = data["contents"]
+            print(f"  역명: {c.get('stationName', '?')}")
+            print(f"  노선: {c.get('subwayLine', '?')}")
+            stat = c.get("stat", [])
+            print(f"  데이터 구간: {len(stat)}개")
+            if stat:
+                first = stat[0]
+                print(f"  첫 구간: {first.get('startTime', '?')}~{first.get('endTime', '?')}")
+                d = first.get("data", {})
+                if isinstance(d, dict):
+                    for k, v in list(d.items())[:3]:
+                        val_preview = str(v)[:60]
+                        print(f"  {k}: {val_preview}")
+                elif isinstance(d, list) and d:
+                    # data가 리스트인 경우 첫 항목 표시
+                    item = d[0] if isinstance(d[0], dict) else {"value": d[0]}
+                    for k, v in list(item.items())[:3]:
+                        val_preview = str(v)[:60]
+                        print(f"  {k}: {val_preview}")
+        return True
+    elif status == 429:
+        print(f"[LIMIT] 한도 초과 (429). 내일 다시 시도하세요.")
+        return False
+    else:
+        print(f"[FAIL] HTTP {status}")
+        if data:
+            print(f"  응답: {json.dumps(data, ensure_ascii=False, default=str)[:200]}")
+        return False
 
-        for key in ["congestionTrain", "data", "result"]:
-            if key in data:
-                val = data[key]
-                if isinstance(val, (int, float)):
-                    return float(val)
-                elif isinstance(val, dict):
-                    inner = val.get("congestionTrain")
-                    if inner is not None:
-                        return float(inner)
 
-    return None
-
-
-def collect_sample(station_name="강남", dow="MON"):
-    """Collect sample data for one station to verify API response format."""
-    code = LINE2_STATIONS.get(station_name)
-    if not code:
-        print(f"Station '{station_name}' not found in mapping")
-        return
-
-    print(f"\n=== Sample collection: {station_name} ({code}) {dow} ===")
-
-    output_dir = PROJECT_ROOT / "data_raw" / "sk_api"
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    sample_data = {"station": station_name, "code": code, "dow": dow, "results": {}}
-
-    for hour in [7, 8, 9, 12, 18, 19]:
-        hh = str(hour).zfill(2)
-        print(f"\n  Hour {hh}:")
-
-        car = fetch_car_congestion(code, dow, hh)
-        getoff = fetch_getoff_car_rate(code, dow, hh)
-        train = fetch_train_congestion(code, dow, hh)
-
-        sample_data["results"][hour] = {
-            "car_congestion": car,
-            "getoff_rate": getoff,
-            "train_congestion": train,
-        }
-
-        if car:
-            print(f"    car_congestion: {json.dumps(car, default=str)[:200]}")
-        else:
-            print(f"    car_congestion: None")
-        if getoff:
-            print(f"    getoff_rate: {json.dumps(getoff, default=str)[:200]}")
-        else:
-            print(f"    getoff_rate: None")
-        if train:
-            print(f"    train_congestion: {json.dumps(train, default=str)[:200]}")
-        else:
-            print(f"    train_congestion: None")
-
-        time.sleep(0.5)
-
-    # Save sample
-    sample_path = output_dir / f"sample_{station_name}_{dow}.json"
-    with open(sample_path, "w", encoding="utf-8") as f:
-        json.dump(sample_data, f, ensure_ascii=False, indent=2, default=str)
-    print(f"\nSample saved: {sample_path}")
-
-    return sample_data
-
+# ─── 메인 ────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="SK Open API Data Collector")
+    parser = argparse.ArgumentParser(
+        description="SK Open API 스마트 데이터 수집기",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+사용 예시:
+  python scripts/collect_sk_api.py --test               # 연결 테스트 (1건)
+  python scripts/collect_sk_api.py --status              # 수집 현황
+  python scripts/collect_sk_api.py --collect             # 수집 시작 (기본 100건/일)
+  python scripts/collect_sk_api.py --collect --limit 50  # 50건만 수집
+  python scripts/collect_sk_api.py --collect --plan hackathon  # 해커톤 요금제
+  python scripts/collect_sk_api.py --process             # 캐시 빌드
+        """,
+    )
     parser.add_argument("--test", action="store_true",
-                       help="Test API connection only")
-    parser.add_argument("--sample", type=str, default=None,
-                       help="Collect sample for one station (e.g., '강남')")
-    parser.add_argument("--full", action="store_true",
-                       help="Collect full data for all stations")
+                        help="API 연결 테스트 (1건만 호출)")
+    parser.add_argument("--status", action="store_true",
+                        help="수집 현황 확인")
+    parser.add_argument("--collect", action="store_true",
+                        help="스마트 수집 시작")
     parser.add_argument("--process", action="store_true",
-                       help="Process existing raw data into caches")
-    parser.add_argument("--delay", type=float, default=0.3,
-                       help="Delay between API calls (seconds)")
+                        help="수집된 데이터를 캐시로 변환")
+    parser.add_argument("--limit", type=int, default=None,
+                        help="일일 호출 한도 (기본: 요금제에 따라)")
+    parser.add_argument("--plan", type=str, default="basic",
+                        choices=["basic", "hackathon"],
+                        help="요금제 (basic=33원/건, hackathon=11원/건)")
+    parser.add_argument("--delay", type=float, default=1.0,
+                        help="호출 간 대기 (초, 기본 1.0)")
+    parser.add_argument("--train", action="store_true",
+                        help="train 엔드포인트도 수집")
+    parser.add_argument("--exit-stats", action="store_true",
+                        help="출구 통계 수집 (43건)")
+    parser.add_argument("--dow", type=str, default="MON",
+                        help="요일 (기본 MON)")
+
     args = parser.parse_args()
 
+    # 요금제별 기본값
+    plan_config = {
+        "basic":     {"limit": 100, "cost": 33},
+        "hackathon": {"limit": 100, "cost": 11},  # 월 3000건 / 30일 ≈ 100건/일
+    }
+    config = plan_config[args.plan]
+
     if args.test:
-        test_api_connection()
-    elif args.sample:
-        collect_sample(args.sample)
-    elif args.full:
-        collect_all_data(delay=args.delay)
+        test_connection()
+    elif args.status:
+        show_status()
+    elif args.exit_stats:
+        collect_exit_stats(delay=args.delay)
+        process_exit_stats()
+    elif args.collect:
+        limit = args.limit or config["limit"]
+        smart_collect(
+            daily_limit=limit,
+            delay=args.delay,
+            dow=args.dow,
+            include_train=args.train,
+            cost_per_call=config["cost"],
+        )
     elif args.process:
-        process_sk_data(PROJECT_ROOT / "data_raw" / "sk_api")
+        process_to_caches()
+        process_exit_stats()  # exit stats도 함께 처리
     else:
-        # Default: test then sample
-        print("Usage: python collect_sk_api.py [--test|--sample STATION|--full|--process]")
-        print("\nRunning test + sample for 강남...")
-        test_api_connection()
-        collect_sample("강남")
+        parser.print_help()
+        print("\n--- 현재 상태 ---")
+        show_status()

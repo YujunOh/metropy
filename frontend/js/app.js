@@ -7,9 +7,11 @@ document.addEventListener('DOMContentLoaded', init);
 async function init() {
   try {
     stations = await API.getStations();
+    window.stations = stations; // search.js, geolocation.js에서 접근 필요
     populateStationSelects();
     setupEventListeners();
     setDefaultHour();
+    setDefaultDow();
     await loadCalibration();
   } catch (e) {
     showError('서버 연결 실패: ' + e.message);
@@ -60,6 +62,18 @@ function populateStationSelects() {
   // 기본값
   setSelectByValue(boarding, '강남');
   setSelectByValue(destination, '시청');
+
+  // 검색 input에도 기본 역명 표시
+  const bs = document.getElementById('boarding-search');
+  const ds = document.getElementById('destination-search');
+  if (bs && boarding.value) {
+    const bStation = stations.find(s => s.name === boarding.value);
+    bs.value = bStation ? bStation.name_display : boarding.value;
+  }
+  if (ds && destination.value) {
+    const dStation = stations.find(s => s.name === destination.value);
+    ds.value = dStation ? dStation.name_display : destination.value;
+  }
 }
 
 function setSelectByValue(select, value) {
@@ -71,15 +85,22 @@ function setSelectByValue(select, value) {
 function swapStations() {
   const b = document.getElementById('boarding');
   const d = document.getElementById('destination');
+  const bs = document.getElementById('boarding-search');
+  const ds = document.getElementById('destination-search');
+
   const tmp = b.value;
   b.value = d.value;
   d.value = tmp;
 
-  // 검색 필드도 초기화
-  const bs = document.getElementById('boarding-search');
-  const ds = document.getElementById('destination-search');
-  if (bs) bs.value = '';
-  if (ds) ds.value = '';
+  // 검색 필드도 역명으로 동기화
+  if (bs && b.value) {
+    const station = stations.find(s => s.name === b.value);
+    bs.value = station ? station.name_display : b.value;
+  } else if (bs) { bs.value = ''; }
+  if (ds && d.value) {
+    const station = stations.find(s => s.name === d.value);
+    ds.value = station ? station.name_display : d.value;
+  } else if (ds) { ds.value = ''; }
 }
 
 function filterStations(selectId, query) {
@@ -115,12 +136,23 @@ function setupEventListeners() {
   document.getElementById('reset-calibration')?.addEventListener('click', resetCalibration);
   document.getElementById('sensitivity-btn')?.addEventListener('click', doSensitivity);
 
-  // 역 검색 필터
-  document.getElementById('boarding-search')?.addEventListener('input', (e) => {
-    filterStations('boarding', e.target.value);
+  // 역 검색은 search.js의 AutocompleteUI가 처리
+  // select 변경 시 검색 input 동기화
+  document.getElementById('boarding')?.addEventListener('change', () => {
+    const sel = document.getElementById('boarding');
+    const input = document.getElementById('boarding-search');
+    if (sel.value && input) {
+      const station = stations.find(s => s.name === sel.value);
+      input.value = station ? station.name_display : sel.value;
+    }
   });
-  document.getElementById('destination-search')?.addEventListener('input', (e) => {
-    filterStations('destination', e.target.value);
+  document.getElementById('destination')?.addEventListener('change', () => {
+    const sel = document.getElementById('destination');
+    const input = document.getElementById('destination-search');
+    if (sel.value && input) {
+      const station = stations.find(s => s.name === sel.value);
+      input.value = station ? station.name_display : sel.value;
+    }
   });
 
   // 시간 팁 클릭 핸들러
@@ -133,6 +165,35 @@ function setupEventListeners() {
       }
     });
   });
+
+  // 요일 칩 클릭 핸들러
+  document.querySelectorAll('.dow-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.dow-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+    });
+  });
+}
+
+// ==================== 요일 선택 ====================
+
+function setDefaultDow() {
+  const days = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+  const todayDow = days[new Date().getDay()];
+  const autoChip = document.querySelector('.dow-chip[data-dow=""]');
+  if (autoChip) {
+    const dowLabels = { MON:'월', TUE:'화', WED:'수', THU:'목', FRI:'금', SAT:'토', SUN:'일' };
+    autoChip.textContent = `오늘(${dowLabels[todayDow]})`;
+    autoChip.dataset.autoDow = todayDow;
+  }
+}
+
+function getSelectedDow() {
+  const active = document.querySelector('.dow-chip.active');
+  if (!active) return null;
+  const dow = active.dataset.dow;
+  if (dow === '') return active.dataset.autoDow || null;
+  return dow || null;
 }
 
 // ==================== 시간 선택 ====================
@@ -216,7 +277,8 @@ async function doRecommend() {
   showSkeletonLoading();
 
   try {
-    const result = await API.recommend(boarding, destination, hour);
+    const dow = getSelectedDow();
+    const result = await API.recommend(boarding, destination, hour, null, dow);
     lastResult = result;
 
     // 통계 업데이트
@@ -351,6 +413,9 @@ function displayResult(result) {
   document.getElementById('best-car-score').textContent = `${result.best_score.toFixed(1)}점`;
 
   // 메타 정보
+  const dowLabels = { MON:'월요일', TUE:'화요일', WED:'수요일', THU:'목요일', FRI:'금요일', SAT:'토요일', SUN:'일요일' };
+  const dowDisplay = result.dow ? dowLabels[result.dow] || result.dow : '평일(기본)';
+
   document.getElementById('result-meta').innerHTML = `
     <div class="meta-item">
       <span class="meta-label">경로</span>
@@ -358,18 +423,22 @@ function displayResult(result) {
     </div>
     <div class="meta-item">
       <span class="meta-label">방향</span>
-      <span class="meta-value">${result.direction} (${result.n_intermediate}개역)</span>
+      <span class="meta-value">${result.direction} (경유 ${result.n_intermediate}개역)</span>
     </div>
     <div class="meta-item">
-      <span class="meta-label">시간대 배율</span>
-      <span class="meta-value">α = ${result.alpha}</span>
+      <span class="meta-label">요일</span>
+      <span class="meta-value">${dowDisplay}</span>
     </div>
     <div class="meta-item">
-      <span class="meta-label">비추천</span>
+      <span class="meta-label">시간대 배율 α</span>
+      <span class="meta-value">${result.alpha}</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">비추천 칸</span>
       <span class="meta-value">${result.worst_car}호차 (${result.worst_score}점)</span>
     </div>
     <div class="meta-item">
-      <span class="meta-label">점수 차이</span>
+      <span class="meta-label">최대-최소 차이</span>
       <span class="meta-value">${result.score_spread}점</span>
     </div>
   `;

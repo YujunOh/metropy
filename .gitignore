@@ -72,6 +72,12 @@ logs/
 *.tmp
 *.temp
 
+# Large input files (PDFs, zips)
+inputs/
+
+# Windows artifacts
+nul
+
 # 배포용 런타임 필수 데이터 (예외 - 반드시 맨 끝에 위치)
 !data_processed/alighting_cache.pkl
 !data_processed/interstation_distance_processed.csv

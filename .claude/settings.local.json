@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m uvicorn:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(tree:*)",
+      "Bash(wc:*)",
+      "Bash(python:*)",
+      "Bash(py -3.13 -m pip install:*)",
+      "Bash(py -3.13 -m pytest:*)",
+      "Bash(ping:*)",
+      "Bash(curl:*)",
+      "Bash(py -3.13 -m src.seatscore:*)",
+      "Bash(dir:*)",
+      "Read(//c/c/**)",
+      "Bash(powershell -NoProfile -Command:*)",
+      "Bash(du -sh \"c:\\\\PROGRAMMING\\\\2026_1_SPRING\\\\metropy\\\\data_raw\\\\fast_exit\"*.json)",
+      "Bash(ls:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

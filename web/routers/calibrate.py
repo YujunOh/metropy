@@ -18,6 +18,8 @@ async def calibrate(req: CalibrationRequest):
 
     if req.beta is not None:
         engine.BETA = req.beta
+    if req.gamma is not None:
+        engine.GAMMA = req.gamma
 
     weights_changed = False
     if req.escalator_weight is not None:
@@ -48,6 +50,7 @@ async def calibrate(req: CalibrationRequest):
 
     return CalibrationResponse(
         beta=engine.BETA,
+        gamma=engine.GAMMA,
         facility_weights=dict(engine.FACILITY_WEIGHTS),
         alpha_map=dict(engine.ALPHA_MAP),
     )
@@ -59,6 +62,7 @@ async def get_calibration():
     engine = registry.get_engine()
     return CalibrationResponse(
         beta=engine.BETA,
+        gamma=engine.GAMMA,
         facility_weights=dict(engine.FACILITY_WEIGHTS),
         alpha_map=dict(engine.ALPHA_MAP),
     )

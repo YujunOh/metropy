@@ -615,6 +615,56 @@ select:focus, input:focus { border-color: var(--accent); }
   transform: rotate(180deg) scale(0.95);
 }
 
+/* ───── 요일 선택 ───── */
+.dow-section {
+  margin-top: 8px;
+}
+
+.dow-section > label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+  display: block;
+}
+
+.dow-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.dow-chip {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+
+.dow-chip:hover {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--surface2);
+}
+
+.dow-chip.active {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.dow-chip[data-dow="SAT"].active,
+.dow-chip[data-dow="SUN"].active {
+  background: var(--green);
+  border-color: var(--green);
+}
+
 /* ───── 시간 ───── */
 .hour-section {
   margin-top: 8px;

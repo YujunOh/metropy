@@ -90,6 +90,10 @@ class SeatScoreEngine:
     # Penalty coefficient for boarding crowding
     BETA = 0.3
 
+    # Competition factor strength: how much L(c) affects scores
+    # 0.0 = no effect (original behavior), 1.0 = full effect
+    GAMMA = 0.5
+
     def __init__(self, data_dir="data_processed", raw_dir="data_raw"):
         self.data_dir = Path(data_dir)
         self.raw_dir = Path(raw_dir)
@@ -107,6 +111,8 @@ class SeatScoreEngine:
         self._car_congestion_cache = None   # SK API: (station, hour, dow) → [10 values]
         self._getoff_rate_cache = None      # SK API: (station, hour, dow) → [10 values]
         self._train_congestion_cache = None # SK API: (station, hour, dow) → value
+        self._travel_time_matrix = None     # TMAP: station→station → seconds
+        self._exit_traffic_cache = {}       # exit traffic: (station, dow) → {exit_no: count}
 
         # data source tracking
         self.data_sources = {}
@@ -120,6 +126,8 @@ class SeatScoreEngine:
         self._load_distance()
         self._build_facility_cache()
         self._load_sk_data()
+        self._load_travel_times()
+        self._load_exit_traffic()
         print(f"SeatScoreEngine v3: all data loaded.")
         print(f"  Data sources: {self.data_sources}")
 
@@ -263,6 +271,66 @@ class SeatScoreEngine:
             else:
                 print(f"  SK {filename}: not found (using fallback)")
 
+    def _load_travel_times(self):
+        """Load TMAP transit cumulative travel times if available."""
+        cum_path = self.data_dir / "cumulative_times.pkl"
+        if cum_path.exists():
+            with open(cum_path, "rb") as f:
+                cum_data = pickle.load(f)
+            self._tt_stations = cum_data["stations"]  # ordered station names
+            self._tt_cumulative = cum_data["cumulative"]  # cumulative seconds
+            n = len(self._tt_stations)
+            self.data_sources["travel_times"] = n
+            print(f"  Travel times: {n} stations (cumulative, direction-aware)")
+        else:
+            self._tt_stations = []
+            self._tt_cumulative = []
+            print(f"  Travel times: not found (using distance fallback)")
+
+    def _load_exit_traffic(self):
+        """Load exit traffic statistics and build day-of-week correction factors."""
+        pkl_path = self.data_dir / "exit_traffic_cache.pkl"
+        if pkl_path.exists():
+            with open(pkl_path, "rb") as f:
+                self._exit_traffic_cache = pickle.load(f)
+            self._build_dow_factors()
+            self.data_sources["exit_traffic"] = len(self._exit_traffic_cache)
+            print(f"  Exit traffic: {len(self._exit_traffic_cache)} entries")
+        else:
+            print(f"  Exit traffic: not found (using facility fallback)")
+
+    def _build_dow_factors(self):
+        """
+        Build per-station day-of-week correction factors from exit traffic.
+
+        dow_factor(station, dow) = traffic(station, dow) / avg_weekday_traffic(station)
+
+        Examples:
+        - 강남 Saturday: 0.59 (much quieter on weekends)
+        - 홍대입구 Saturday: 1.29 (busier on weekends)
+        """
+        self._dow_factors = {}  # (station, dow) → float ratio
+
+        # Collect per-station totals by day
+        station_day_totals = {}
+        for (station, dow), exits in self._exit_traffic_cache.items():
+            total = sum(exits.values())
+            if station not in station_day_totals:
+                station_day_totals[station] = {}
+            station_day_totals[station][dow] = total
+
+        # Compute correction factor: ratio to weekday average
+        weekday_codes = ["MON", "TUE", "WED", "THU", "FRI"]
+        for station, day_data in station_day_totals.items():
+            weekday_vals = [day_data[d] for d in weekday_codes if d in day_data]
+            if not weekday_vals:
+                continue
+            weekday_avg = sum(weekday_vals) / len(weekday_vals)
+            if weekday_avg <= 0:
+                continue
+            for dow, total in day_data.items():
+                self._dow_factors[(station, dow)] = total / weekday_avg
+
     # ----- core logic --------------------------------------------------------
 
     def _get_alpha(self, hour):
@@ -338,7 +406,18 @@ class SeatScoreEngine:
             else:
                 return (stations[:b_idx][::-1] + stations[d_idx:][::-1])
 
-    def _get_alighting_volume(self, station, hour, direction=None):
+    def _get_dow_factor(self, station, dow=None):
+        """
+        Day-of-week correction factor based on exit traffic data.
+
+        Returns a multiplier (e.g., 0.59 for 강남 on weekend, 1.29 for 홍대입구).
+        Defaults to 1.0 if no data or weekday.
+        """
+        if not dow or not hasattr(self, "_dow_factors") or not self._dow_factors:
+            return 1.0
+        return self._dow_factors.get((station, dow), 1.0)
+
+    def _get_alighting_volume(self, station, hour, direction=None, dow=None):
         """
         D(s): alighting volume at station s during hour h.
 
@@ -346,24 +425,63 @@ class SeatScoreEngine:
         1. Direction-aware 30-min congestion data (if available)
         2. Hourly alighting cache (backward compatible)
         3. Fallback: 1.0
+
+        Adjusted by day-of-week factor from exit traffic when dow is provided.
         """
         # Try direction-aware 30-min data first
         if self._congestion_30min_cache and direction:
             dir_key = "내선" if ("내선" in str(direction) or "하행" in str(direction)) else "외선"
             val = self._congestion_30min_cache.get((station, dir_key, hour))
             if val is not None:
-                return val
+                return val * self._get_dow_factor(station, dow)
 
             # Try without direction specificity
             for key, v in self._congestion_30min_cache.items():
                 if key[0] == station and key[2] == hour:
-                    return v
+                    return v * self._get_dow_factor(station, dow)
 
         # Fallback to hourly cache
-        return self._alighting_cache.get((station, hour), 1.0)
+        base = self._alighting_cache.get((station, hour), 1.0)
+        return base * self._get_dow_factor(station, dow)
 
-    def _get_travel_time(self, station_from, station_to):
-        """T(s->dest): remaining travel time proxy (km-based)."""
+    def _get_travel_time(self, station_from, station_to, direction=None):
+        """
+        T(s->dest): remaining travel time from station s to destination.
+
+        Direction-aware: on circular Line 2, the travel time depends on
+        which direction the train is going (inner/clockwise vs outer).
+
+        Priority:
+        1. TMAP transit cumulative times (real seconds, direction-aware)
+        2. Distance-based proxy (km, backward compatible)
+        """
+        # Try TMAP cumulative travel times
+        if self._tt_stations and self._tt_cumulative:
+            try:
+                idx_from = self._tt_stations.index(station_from)
+                idx_to = self._tt_stations.index(station_to)
+            except ValueError:
+                pass
+            else:
+                cum = self._tt_cumulative
+                total_loop = cum[-1]  # full loop time in seconds
+
+                # Inner (clockwise): cum[to] - cum[from], wrapping around
+                inner_time = (cum[idx_to] - cum[idx_from]) % total_loop
+                outer_time = total_loop - inner_time
+
+                is_inner = direction and (
+                    "내선" in str(direction) or "하행" in str(direction)
+                )
+
+                if direction:
+                    tt_sec = inner_time if is_inner else outer_time
+                else:
+                    tt_sec = min(inner_time, outer_time)
+
+                return max(tt_sec / 60.0, 0.1)  # seconds → minutes
+
+        # Fallback to distance-based proxy
         if self.distance_df is None:
             return 1.0
         try:
@@ -435,36 +553,99 @@ class SeatScoreEngine:
         # Fallback to facility-based penalty
         return self._get_facility_score(boarding_station, car_no, direction)
 
+    def _get_load_factors(self, intermediates, direction, hour):
+        """
+        L(c): per-car relative load factor (competition coefficient).
+
+        Represents how crowded car c is relative to average.
+        L(c) > 1 → more crowded → harder to get a freed seat.
+        L(c) < 1 → less crowded → easier to get a freed seat.
+
+        Raw L values are clamped to [0.3, 3.0] to prevent extreme outliers,
+        then dampened via GAMMA: L_eff = L^GAMMA (in compute_seatscore).
+
+        Priority:
+        1. SK API congestionCar (real per-car crowding measurement)
+        2. Average w(c,s) across intermediate stations (facility-based proxy)
+        3. Uniform (1.0 for all cars)
+        """
+        L_MIN, L_MAX = 0.3, 3.0
+        loads = [0.0] * self.TOTAL_CARS
+
+        # Try SK API car congestion: average across intermediate stations
+        if self._car_congestion_cache and hour is not None:
+            sk_count = 0
+            for s in intermediates:
+                congestion = self._car_congestion_cache.get((s, hour, "MON"))
+                if congestion and len(congestion) == self.TOTAL_CARS:
+                    for i in range(self.TOTAL_CARS):
+                        loads[i] += congestion[i]
+                    sk_count += 1
+            if sk_count > 0:
+                loads = [v / sk_count for v in loads]
+                mean_load = sum(loads) / self.TOTAL_CARS
+                if mean_load > 0:
+                    return [max(L_MIN, min(L_MAX, v / mean_load)) for v in loads]
+
+        # Fallback: average facility-based w(c,s) across intermediate stations
+        if intermediates:
+            for s in intermediates:
+                for c in range(self.TOTAL_CARS):
+                    loads[c] += self._get_car_weight(s, c + 1, direction, hour)
+
+            mean_load = sum(loads) / self.TOTAL_CARS
+            if mean_load > 0:
+                return [max(L_MIN, min(L_MAX, v / mean_load)) for v in loads]
+
+        # Uniform fallback
+        return [1.0] * self.TOTAL_CARS
+
     # ----- public API --------------------------------------------------------
 
-    def compute_seatscore(self, boarding, destination, hour, direction):
+    def compute_seatscore(self, boarding, destination, hour, direction, dow=None):
         """
         Compute SeatScore for each car.
 
         Returns pd.DataFrame with columns: car, benefit, penalty, score_raw, score, rank
         Also includes station_contributions for explanation UI.
+
+        Args:
+            dow: Day of week code (MON/TUE/WED/THU/FRI/SAT/SUN).
+                 Adjusts D(s) using exit traffic patterns.
         """
         intermediates = self._get_intermediate_stations(boarding, destination, direction)
         alpha = self._get_alpha(hour)
+
+        # Weekend alpha adjustment: reduce by ~15% on weekends
+        if dow in ("SAT", "SUN"):
+            alpha = round(alpha * 0.85, 2)
+
+        # competition factor: relative per-car crowding
+        load_factors_raw = self._get_load_factors(intermediates, direction, hour)
+        # Apply GAMMA dampening: L_eff = L^GAMMA
+        # GAMMA=0 → no effect, GAMMA=1 → full effect, GAMMA=0.5 → sqrt dampening
+        load_factors = [L ** self.GAMMA for L in load_factors_raw]
 
         # compute raw scores with per-station contribution tracking
         raw_scores = {}
         station_contributions = {}  # {car: [{station, D, T, w, contribution}, ...]}
 
         for c in range(1, self.TOTAL_CARS + 1):
+            L = load_factors[c - 1]
             benefit = 0.0
             contributions = []
             for s in intermediates:
-                D = self._get_alighting_volume(s, hour, direction)
-                T = self._get_travel_time(s, destination)
+                D = self._get_alighting_volume(s, hour, direction, dow)
+                T = self._get_travel_time(s, destination, direction)
                 w = self._get_car_weight(s, c, direction, hour)
-                contrib = D * T * w * alpha
+                contrib = D * T * w * alpha / L if L > 0 else 0.0
                 benefit += contrib
                 contributions.append({
                     "station": s,
                     "D": round(D, 2),
                     "T": round(T, 2),
                     "w": round(w, 4),
+                    "L": round(L, 4),
                     "contribution": round(contrib, 2),
                 })
             raw_scores[c] = benefit
@@ -492,6 +673,7 @@ class SeatScoreEngine:
                 "car": c,
                 "benefit": raw_scores[c],
                 "penalty": boarding_penalty[c],
+                "load_factor": round(load_factors[c - 1], 4),
                 "score_raw": final_scores[c],
             }
             for c in range(1, self.TOTAL_CARS + 1)
@@ -520,13 +702,15 @@ class SeatScoreEngine:
 
         return result.reset_index(drop=True)
 
-    def recommend(self, boarding_station, destination_station, hour, direction="내선"):
+    def recommend(self, boarding_station, destination_station, hour, direction="내선", dow=None):
         boarding = normalize_station_name(boarding_station)
         destination = normalize_station_name(destination_station)
 
         intermediates = self._get_intermediate_stations(boarding, destination, direction)
         alpha = self._get_alpha(hour)
-        scores_df = self.compute_seatscore(boarding, destination, hour, direction)
+        if dow in ("SAT", "SUN"):
+            alpha = round(alpha * 0.85, 2)
+        scores_df = self.compute_seatscore(boarding, destination, hour, direction, dow)
 
         best = scores_df.iloc[0]
         worst = scores_df.iloc[-1]
@@ -541,6 +725,12 @@ class SeatScoreEngine:
             boarding_congestion = self._congestion_30min_cache.get(
                 (boarding, dir_key, hour)
             )
+
+        # Extract load factors from scores_df
+        load_factors_map = {
+            int(row["car"]): row["load_factor"]
+            for _, row in scores_df.iterrows()
+        }
 
         return {
             "boarding": boarding,
@@ -558,6 +748,7 @@ class SeatScoreEngine:
             "score_spread": best["score"] - worst["score"],
             "station_contributions": station_contribs,
             "boarding_congestion": boarding_congestion,
+            "load_factors": load_factors_map,
             "data_sources": list(self.data_sources.keys()),
         }
 
@@ -589,6 +780,10 @@ if __name__ == "__main__":
         print(f"{'='*60}")
         for _, row in r["scores"].iterrows():
             bar = "#" * int(row["score"] / 5)
-            print(f"  Car {int(row['car']):>2} | {row['score']:5.1f} | gap -{row['gap_from_best']:4.1f} | {bar}")
+            L = row["load_factor"]
+            print(f"  Car {int(row['car']):>2} | {row['score']:5.1f} | L={L:.2f} | gap -{row['gap_from_best']:4.1f} | {bar}")
         print(f"  Best: Car {r['best_car']}  Worst: Car {r['worst_car']}  "
               f"Spread: {r['score_spread']:.1f}")
+        print(f"  Load factors: " + ", ".join(
+            f"C{k}={v:.2f}" for k, v in sorted(r['load_factors'].items())
+        ))

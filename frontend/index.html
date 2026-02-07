@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
-  <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=4dd9dc56068cb38f0529a5f7fb816bc6"></script>
+  <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=4dd9dc56068cb38f0529a5f7fb816bc6&autoload=true"></script>
   <meta name="theme-color" content="#5b8cff">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -58,13 +58,13 @@
     <!-- 히어로 -->
     <section class="hero">
       <div class="hero-inner">
-        <div class="hero-badge">Seoul Metro Line 2</div>
+        <div class="hero-badge">Seoul Metro Line 2 &middot; SeatScore v3</div>
         <h1 class="hero-title">
           어느 칸에 타야<br><span class="gradient-text">앉을 수 있을까?</span>
         </h1>
         <p class="hero-desc">
-          Metropy는 서울 지하철 2호선의 공공데이터를 분석하여,<br>
-          이동 중 착석 가능성이 가장 높은 <strong>최적 탑승 칸</strong>을 추천합니다.
+          Metropy는 서울 지하철 2호선의 8가지 공공데이터를 결합하여,<br>
+          이동 중 착석 확률이 가장 높은 <strong>최적 탑승 칸</strong>을 실시간으로 추천합니다.
         </p>
         <div class="hero-actions">
           <button class="btn-hero" onclick="showPage('app')">지금 추천받기</button>
@@ -76,8 +76,8 @@
             <span class="stat-label">혼잡도 데이터</span>
           </div>
           <div class="stat">
-            <span class="stat-number">450</span>
-            <span class="stat-label">빠른환승 레코드</span>
+            <span class="stat-number">8</span>
+            <span class="stat-label">데이터 소스</span>
           </div>
           <div class="stat">
             <span class="stat-number">43</span>
@@ -85,7 +85,7 @@
           </div>
           <div class="stat">
             <span class="stat-number">10</span>
-            <span class="stat-label">칸별 점수</span>
+            <span class="stat-label">칸별 실시간 점수</span>
           </div>
         </div>
       </div>
@@ -101,9 +101,9 @@
             <h3>기존 서비스</h3>
             <p>"<strong>빠른 하차</strong>"에 집중합니다.</p>
             <ul>
-              <li>출구에서 가장 가까운 칸</li>
-              <li>환승 통로에 가장 가까운 문</li>
-              <li>내린 이후의 편의성 최적화</li>
+              <li>출구에서 가장 가까운 칸 안내</li>
+              <li>환승 통로까지의 이동 시간 최소화</li>
+              <li>내린 이후의 편의성만 최적화</li>
             </ul>
           </div>
           <div class="compare-card new">
@@ -111,9 +111,9 @@
             <h3>Metropy</h3>
             <p>"<strong>착석 경험</strong>"에 집중합니다.</p>
             <ul>
-              <li>이동 중 앉을 확률이 높은 칸</li>
-              <li>중간역 하차 패턴 분석</li>
-              <li>타는 순간부터의 효용 최적화</li>
+              <li>이동 중 앉을 확률이 가장 높은 칸 추천</li>
+              <li>경유역 하차 패턴 + 실시간 혼잡도 분석</li>
+              <li>탑승 순간부터 도착까지 효용 극대화</li>
             </ul>
           </div>
         </div>
@@ -135,17 +135,17 @@
           <div class="step-card">
             <div class="step-num">1</div>
             <h3>경로 입력</h3>
-            <p>출발역, 도착역, 탑승 시간을 선택합니다. 방향(내선/외선)은 자동으로 판별됩니다.</p>
+            <p>출발역과 도착역, 탑승 시간을 선택하세요. GPS로 현재 위치를 자동 감지할 수도 있습니다. 방향(내선/외선)은 자동 판별됩니다.</p>
           </div>
           <div class="step-card">
             <div class="step-num">2</div>
             <h3>SeatScore 계산</h3>
-            <p>경유하는 각 역의 하차량, 잔여 거리, 시설 가중치를 결합하여 칸별 착석 효용 점수를 산출합니다.</p>
+            <p>혼잡도, 하차 패턴, 이동 거리, 시설 위치, 칸별 하차율 등 8가지 데이터를 결합하여 칸별 착석 효용 점수를 계산합니다.</p>
           </div>
           <div class="step-card">
             <div class="step-num">3</div>
             <h3>최적 칸 추천</h3>
-            <p>10량 열차의 각 칸을 점수 순으로 랭킹하여, 가장 앉기 좋은 칸과 피해야 할 칸을 알려드립니다.</p>
+            <p>10량 열차의 모든 칸을 점수 순으로 랭킹하여, 가장 앉기 좋은 칸과 피해야 할 칸을 시각적으로 안내합니다.</p>
           </div>
         </div>
       </div>
@@ -154,35 +154,35 @@
     <!-- SeatScore 공식 -->
     <section class="section">
       <div class="section-inner">
-        <h2 class="section-title"><span class="gradient-text">SeatScore</span> 공식</h2>
+        <h2 class="section-title"><span class="gradient-text">SeatScore</span> v3 공식</h2>
         <div class="formula-card">
           <div class="formula-main">
-            SeatScore(c) = &Sigma;<sub>s</sub> [ D(s) &times; T(s&rarr;dest) &times; w(c,s) &times; &alpha;(h) ] &minus; &beta; &times; B(c,h)
+            SeatScore(c) = &Sigma;<sub>s</sub> [ D(s) &times; T(s&rarr;dest) &times; w(c,s) &times; &alpha;(h) / L(c) ] &minus; &beta; &times; B(c,h)
           </div>
           <div class="formula-grid">
             <div class="formula-item">
               <span class="formula-symbol">D(s)</span>
-              <span class="formula-desc">중간역 s의 하차량<br><small>316K 혼잡도 데이터 기반</small></span>
+              <span class="formula-desc">방향별 혼잡도 하락량<br><small>경유역 s에서 빠지는 승객 규모</small></span>
             </div>
             <div class="formula-item">
               <span class="formula-symbol">T(s&rarr;dest)</span>
-              <span class="formula-desc">잔여 이동 거리(km)<br><small>멀수록 착석 시간이 길어져 효용 증가</small></span>
+              <span class="formula-desc">실제 잔여 이동 시간<br><small>TMAP 대중교통 API 기반 (초 단위)</small></span>
             </div>
             <div class="formula-item">
               <span class="formula-symbol">w(c,s)</span>
-              <span class="formula-desc">시설 가중치<br><small>에스컬레이터(1.5) &gt; 엘리베이터(1.2) &gt; 계단(1.0)</small></span>
+              <span class="formula-desc">칸별 하차 가중치<br><small>SK 지하철 혼잡도 API 칸별 하차율 기반</small></span>
             </div>
             <div class="formula-item">
               <span class="formula-symbol">&alpha;(h)</span>
-              <span class="formula-desc">시간대 배율<br><small>출근러시 1.4 / 퇴근 1.3 / 심야 0.6</small></span>
+              <span class="formula-desc">시간대 배율 (연속 보간)<br><small>출근러시 1.4 / 퇴근 1.3 / 심야 0.6</small></span>
             </div>
             <div class="formula-item">
-              <span class="formula-symbol">&beta;</span>
-              <span class="formula-desc">탑승 페널티 계수<br><small>기본값 0.3 (조정 가능)</small></span>
+              <span class="formula-symbol">L(c)</span>
+              <span class="formula-desc">탑승 경쟁 계수<br><small>같은 칸 탑승자와의 좌석 경합 반영</small></span>
             </div>
             <div class="formula-item">
-              <span class="formula-symbol">B(c,h)</span>
-              <span class="formula-desc">탑승 혼잡 페널티<br><small>출구 근처 칸은 탑승 인원도 많음</small></span>
+              <span class="formula-symbol">&beta; &times; B(c,h)</span>
+              <span class="formula-desc">탑승 혼잡 페널티<br><small>출구 근처 칸의 혼잡 감점 (&beta;=0.3)</small></span>
             </div>
           </div>
         </div>
@@ -192,7 +192,7 @@
             지하철 역은 플랫폼 중앙에 계단/에스컬레이터가 집중되어 있습니다.
             중간 칸(3~7호차) 근처에서 하차하는 승객이 많아 <strong class="green">자리가 빨리 남</strong>지만,
             동시에 탑승하는 승객도 몰려 <strong class="red">초기 착석이 어렵</strong>습니다.
-            SeatScore v2는 이 트레이드오프를 &beta; 페널티로 명시적으로 모델링합니다.
+            SeatScore v3는 이 트레이드오프를 &beta; 페널티와 L(c) 경쟁 계수로 정밀하게 모델링합니다.
           </p>
         </div>
       </div>
@@ -202,7 +202,7 @@
     <section class="section section-cta">
       <div class="section-inner" style="text-align:center">
         <h2 class="section-title">직접 <span class="gradient-text">확인해보세요</span></h2>
-        <p style="color:var(--text-dim);margin-bottom:24px">출발역과 도착역을 선택하면 최적 칸을 바로 확인할 수 있습니다.</p>
+        <p style="color:var(--text-dim);margin-bottom:24px">출발역과 도착역만 선택하면, 지금 바로 최적 탑승 칸을 확인할 수 있습니다.</p>
         <button class="btn-hero" onclick="showPage('app')">추천 시작하기</button>
       </div>
     </section>
@@ -229,13 +229,13 @@
       <div class="card">
         <div class="card-header">
           <h2 class="card-title">경로 입력</h2>
-          <button class="icon-btn" id="add-favorite-btn" title="즐겨찾기 추가" style="display:none">⭐</button>
+          <button class="icon-btn" id="add-favorite-btn" title="즐겨찾기에 추가" style="display:none">⭐</button>
         </div>
         <div class="input-grid">
           <div class="input-group">
             <label>출발역</label>
             <div class="select-wrapper">
-              <input type="text" id="boarding-search" class="station-search" placeholder="역명 검색..." autocomplete="off">
+              <input type="text" id="boarding-search" class="station-search" placeholder="출발역 검색 (초성 가능)" autocomplete="off">
               <select id="boarding" class="station-select"></select>
             </div>
           </div>
@@ -245,9 +245,23 @@
           <div class="input-group">
             <label>도착역</label>
             <div class="select-wrapper">
-              <input type="text" id="destination-search" class="station-search" placeholder="역명 검색..." autocomplete="off">
+              <input type="text" id="destination-search" class="station-search" placeholder="도착역 검색 (초성 가능)" autocomplete="off">
               <select id="destination" class="station-select"></select>
             </div>
+          </div>
+        </div>
+
+        <div class="dow-section">
+          <label>요일</label>
+          <div class="dow-chips" id="dow-chips">
+            <button class="dow-chip active" data-dow="">자동</button>
+            <button class="dow-chip" data-dow="MON">월</button>
+            <button class="dow-chip" data-dow="TUE">화</button>
+            <button class="dow-chip" data-dow="WED">수</button>
+            <button class="dow-chip" data-dow="THU">목</button>
+            <button class="dow-chip" data-dow="FRI">금</button>
+            <button class="dow-chip" data-dow="SAT">토</button>
+            <button class="dow-chip" data-dow="SUN">일</button>
           </div>
         </div>
 
@@ -285,7 +299,7 @@
         <div class="card-header">
           <div>
             <h2 class="card-title">🗺️ 2호선 노선도</h2>
-            <p class="card-desc">경로를 지도에서 확인하세요</p>
+            <p class="card-desc">선택한 경로를 지도에서 시각적으로 확인할 수 있습니다</p>
           </div>
           <button class="btn-secondary map-toggle-btn" onclick="toggleMapView()">
             <span id="map-toggle-icon">📍</span> <span id="map-toggle-text">지도 펼치기</span>
@@ -303,8 +317,8 @@
   <div id="page-calibrate" class="page">
     <div class="app-container">
       <div class="card">
-        <h2 class="card-title">하이퍼파라미터 조정</h2>
-        <p class="card-desc">SeatScore 모델의 가중치를 실시간으로 조정하고, 추천 결과의 변화를 확인합니다.</p>
+        <h2 class="card-title">SeatScore 파라미터 튜닝</h2>
+        <p class="card-desc">SeatScore v3 모델의 핵심 파라미터를 직접 조정하고, 추천 결과가 어떻게 변하는지 실시간으로 확인하세요.</p>
 
         <!-- Beta -->
         <div class="cal-section">
@@ -407,8 +421,8 @@
       <div class="card">
         <h2 class="card-title">&beta; 민감도 분석</h2>
         <p class="card-desc">
-          &beta;값을 0.0에서 1.0까지 변화시키며 각 칸의 점수 변화를 시각화합니다.
-          추천 페이지에서 선택한 경로를 기준으로 분석합니다.
+          &beta;값을 0.0에서 1.0까지 변화시키며 칸별 점수 순위가 어떻게 뒤바뀌는지 시각화합니다.
+          먼저 추천 탭에서 경로를 선택한 뒤 분석을 실행하세요.
         </p>
         <button class="btn-primary" id="sensitivity-btn">&beta; 민감도 분석 실행</button>
         <div id="sensitivity-chart" style="margin-top:20px"></div>
@@ -427,19 +441,19 @@
       <div class="stats-grid-2col">
         <div class="card">
           <h2 class="card-title">🎯 추천받은 칸 분포</h2>
-          <p class="card-desc">어떤 칸이 가장 많이 추천되었는지 확인하세요</p>
+          <p class="card-desc">내가 가장 많이 추천받은 칸은 몇 호차일까요?</p>
           <canvas id="car-stats-chart" style="max-height: 250px;"></canvas>
         </div>
         <div class="card">
-          <h2 class="card-title">📈 시간대별 이용</h2>
-          <p class="card-desc">주로 어느 시간대에 검색했는지 분석</p>
+          <h2 class="card-title">📈 시간대별 이용 패턴</h2>
+          <p class="card-desc">어느 시간대에 Metropy를 가장 자주 사용했는지 확인하세요</p>
           <canvas id="hour-stats-chart" style="max-height: 250px;"></canvas>
         </div>
       </div>
 
       <div class="card">
-        <h2 class="card-title">🗺️ 자주 이용하는 경로</h2>
-        <p class="card-desc">가장 많이 검색한 경로 TOP 5</p>
+        <h2 class="card-title">🗺️ 자주 이용하는 경로 TOP 5</h2>
+        <p class="card-desc">가장 많이 검색한 출발-도착 경로 순위</p>
         <div id="route-ranking"></div>
       </div>
 
@@ -467,7 +481,7 @@
     <div class="app-container about-container">
       <article class="about-article">
         <h1>Metropy 연구 배경</h1>
-        <p class="about-subtitle">공공데이터 기반 지하철 착석 효용 극대화를 위한 의사결정 모델</p>
+        <p class="about-subtitle">8가지 공공데이터를 결합한 지하철 착석 효용 극대화 의사결정 모델 (SeatScore v3)</p>
 
         <section>
           <h2>1. 문제 정의</h2>
@@ -493,42 +507,57 @@
             따라서 전통적인 지도학습 예측 문제로 접근할 수 없습니다.
           </p>
           <p>
-            본 연구는 이를 <strong>점수 기반 의사결정 문제</strong>로 재정의하고,
-            관측 가능한 공공데이터(혼잡도, 역 구조, 시설물 위치)를 결합한
-            효용 함수(SeatScore)를 설계합니다.
-          </p>
-          <p>
-            머신러닝(Linear Regression, Random Forest)은 최종 목표가 아니라,
-            SeatScore 계산에 필요한 <strong>하차 규모 근사값을 안정적으로 생성</strong>하기 위한
-            보조 모듈입니다.
+            Metropy는 이를 <strong>점수 기반 의사결정 문제</strong>로 재정의합니다.
+            8가지 관측 가능한 공공데이터(혼잡도, 역 구조, 시설 위치, 칸별 하차율, 실제 이동시간 등)를 결합한
+            효용 함수 <strong>SeatScore v3</strong>를 설계하여 칸 간의 상대적 착석 효용을 비교합니다.
           </p>
         </section>
 
         <section>
-          <h2>3. 데이터 소스</h2>
+          <h2>3. 데이터 소스 (8가지)</h2>
           <div class="data-table">
             <div class="data-row header">
               <span>데이터</span><span>출처</span><span>규모</span>
             </div>
             <div class="data-row">
-              <span>시간대별 승하차 인원</span>
+              <span>30분 단위 혼잡도</span>
               <span>서울 열린데이터광장</span>
-              <span>316,800건</span>
+              <span>2,264건</span>
             </div>
             <div class="data-row">
               <span>빠른환승 시설 정보</span>
               <span>서울교통공사 API</span>
-              <span>450건 (2호선)</span>
+              <span>450건</span>
             </div>
             <div class="data-row">
-              <span>역간 거리/소요시간</span>
+              <span>역간 거리</span>
               <span>서울 열린데이터광장</span>
               <span>52개 구간</span>
             </div>
             <div class="data-row">
-              <span>역 마스터 (좌표)</span>
-              <span>서울 열린데이터광장</span>
-              <span>80개 역</span>
+              <span>실제 이동 시간</span>
+              <span>TMAP 대중교통 API</span>
+              <span>43개 구간</span>
+            </div>
+            <div class="data-row">
+              <span>칸별 하차율</span>
+              <span>SK 지하철 혼잡도 API</span>
+              <span>95건</span>
+            </div>
+            <div class="data-row">
+              <span>역 하차 비율</span>
+              <span>혼잡도 데이터 가공</span>
+              <span>1,092건</span>
+            </div>
+            <div class="data-row">
+              <span>시설/POI 가중치</span>
+              <span>빠른환승 데이터 가공</span>
+              <span>361건</span>
+            </div>
+            <div class="data-row">
+              <span>출구 통행량</span>
+              <span>SK Exit Statistics API</span>
+              <span>287건</span>
             </div>
           </div>
         </section>
@@ -537,9 +566,9 @@
           <h2>4. 왜 2호선인가?</h2>
           <p>
             빠른환승 API(getFstExit) 테스트 결과,
-            <strong>2호선이 450개 레코드, 50개 역, 40개 차량 구성 패턴</strong>으로
-            모든 노선 중 가장 풍부한 데이터를 보유하고 있었습니다.
-            또한 순환선이라는 특성이 출퇴근 패턴 분석에 유리합니다.
+            <strong>2호선이 450개 레코드, 43개 역, 10량 고정 편성</strong>으로
+            모든 노선 중 가장 풍부하고 일관된 데이터를 보유하고 있었습니다.
+            순환선 특성상 내선/외선 양방향 분석이 가능하며, 수도권 최다 이용 노선으로 실용성이 높습니다.
           </p>
         </section>
 
@@ -569,11 +598,11 @@
         <section>
           <h2>6. 한계 및 주의사항</h2>
           <ul class="limit-list">
-            <li><strong>의사결정 지원</strong>이지 예측이 아닙니다. 정답 기반 검증은 구조적으로 불가능합니다.</li>
-            <li>D(s) 하차량은 <strong>역 전체 평균</strong>이며 칸별 구분이 아닙니다.</li>
-            <li>w(c,s)는 실제 승객 행동이 아닌 <strong>시설 구조</strong> 기반입니다.</li>
-            <li>&beta;=0.3은 <strong>휴리스틱</strong>이며 민감도 분석을 통해 검증합니다.</li>
-            <li>점수는 <strong>상대적 효용 비교</strong>이지 절대적 착석 확률이 아닙니다.</li>
+            <li><strong>의사결정 지원 도구</strong>이지 착석 여부의 예측이 아닙니다. 정답(ground truth) 기반 검증은 구조적으로 불가능합니다.</li>
+            <li>D(s)는 30분 단위 <strong>역 전체 평균 혼잡도</strong> 기반이며, 실시간 차량 내 인원과는 차이가 있을 수 있습니다.</li>
+            <li>w(c,s)는 SK API 칸별 하차율 + 시설 위치 기반이며, <strong>승객 개인 행동</strong>까지 반영하지는 않습니다.</li>
+            <li>&beta;=0.3, &alpha; 기준값은 <strong>휴리스틱 설정</strong>이며, 파라미터 탭에서 민감도 분석으로 직접 검증할 수 있습니다.</li>
+            <li>점수는 칸 간의 <strong>상대적 효용 비교</strong>이지, 절대적 착석 확률(%)을 의미하지 않습니다.</li>
           </ul>
         </section>
       </article>
@@ -584,7 +613,7 @@
   <footer class="footer" id="main-footer">
     <div class="footer-inner">
       <p>Metropy &mdash; 서울 지하철 착석 효용 의사결정 모델</p>
-      <p class="footer-sub">공공데이터 기반 &middot; 2호선 &middot; SeatScore v2</p>
+      <p class="footer-sub">8가지 공공데이터 기반 &middot; 2호선 순환선 &middot; SeatScore v3</p>
     </div>
   </footer>
 

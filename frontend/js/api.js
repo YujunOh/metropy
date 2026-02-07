@@ -58,8 +58,8 @@ const API = (function() {
     },
 
     // 추천 (캐싱)
-    async recommend(boarding, destination, hour, direction = null) {
-      const params = { boarding, destination, hour, direction };
+    async recommend(boarding, destination, hour, direction = null, dow = null) {
+      const params = { boarding, destination, hour, direction, dow };
       const key = cacheKey('recommend', params);
       const cached = getFromCache(key);
       if (cached) {
@@ -69,6 +69,7 @@ const API = (function() {
 
       const body = { boarding, destination, hour };
       if (direction) body.direction = direction;
+      if (dow) body.dow = dow;
 
       const res = await fetch('/api/recommend', {
         method: 'POST',
