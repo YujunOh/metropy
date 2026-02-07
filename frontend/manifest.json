@@ -1,0 +1,35 @@
+{
+  "name": "Metropy - 서울 지하철 착석 효용 최적화",
+  "short_name": "Metropy",
+  "description": "서울 지하철 2호선에서 앉을 확률이 가장 높은 칸을 추천합니다",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "background_color": "#0a0c14",
+  "theme_color": "#5b8cff",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/static/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["travel", "navigation", "utilities"],
+  "lang": "ko-KR",
+  "dir": "ltr",
+  "scope": "/",
+  "related_applications": [],
+  "prefer_related_applications": false,
+  "shortcuts": [
+    {
+      "name": "빠른 추천",
+      "short_name": "추천",
+      "description": "즉시 추천 페이지로 이동",
+      "url": "/?page=app",
+      "icons": []
+    }
+  ],
+  "screenshots": []
+}

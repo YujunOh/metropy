@@ -1,0 +1,1521 @@
+/* =========================================================
+   Metropy — Results & Analysis Styles
+   Results, Train Viz, Calibrate, Stats, Feedback, Map
+   ========================================================= */
+
+/* ───── L(c) 경쟁계수 시각화 ───── */
+.load-factor-viz {
+  margin: 16px 0;
+  padding: 14px 16px;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+.lf-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.lf-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.lf-legend {
+  font-size: 12px;
+  color: var(--text-dim);
+  display: flex;
+  gap: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.lf-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lf-bar-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lf-car {
+  font-size: 12px;
+  color: var(--text-dim);
+  width: 16px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.lf-bar-track {
+  flex: 1;
+  height: 6px;
+  background: var(--surface2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.lf-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width .3s ease;
+}
+.lf-bar-fill.lf-low { background: var(--green); }
+.lf-bar-fill.lf-mid { background: var(--accent); }
+.lf-bar-fill.lf-high { background: var(--red); }
+.lf-val {
+  font-size: 11px;
+  color: var(--text-dim);
+  width: 32px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+/* ───── 결과 ───── */
+#result-section { display: none; animation: fadeIn .4s ease; }
+#result-section.visible { display: block; }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.result-hero {
+  background: linear-gradient(135deg, rgba(52, 211, 153, 0.12), rgba(91, 140, 255, 0.12));
+  border: 2px solid rgba(52, 211, 153, 0.3);
+  border-radius: var(--radius);
+  padding: 36px;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 40px;
+  box-shadow: 0 8px 24px rgba(52, 211, 153, 0.1);
+}
+
+.result-best {
+  text-align: center;
+  flex-shrink: 0;
+  padding: 20px;
+  background: rgba(52, 211, 153, 0.08);
+  border-radius: var(--radius);
+  min-width: 160px;
+}
+
+.result-best-label {
+  display: block;
+  font-size: .75rem;
+  font-weight: 700;
+  color: var(--green);
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  margin-bottom: 8px;
+}
+
+.result-best-car {
+  display: block;
+  font-size: 2.8rem;
+  font-weight: 900;
+  color: var(--green);
+  line-height: 1;
+  text-shadow: 0 2px 8px rgba(52, 211, 153, 0.3);
+}
+
+.result-best-score {
+  display: block;
+  font-size: .95rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin-top: 8px;
+}
+
+.result-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 14px;
+  flex: 1;
+}
+
+.meta-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  text-align: center;
+  transition: all var(--transition);
+}
+
+.meta-item:hover {
+  background: var(--surface2);
+  transform: translateY(-2px);
+}
+
+.meta-label {
+  display: block;
+  font-size: .72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  margin-bottom: 6px;
+}
+.meta-value { font-size: .95rem; font-weight: 700; display: block; }
+.meta-sub { display: block; font-size: .75rem; color: var(--text-dim); margin-top: 2px; font-weight: 500; }
+
+/* ───── 열차 시각화 ───── */
+.train {
+  display: flex;
+  gap: 6px;
+  margin: 20px 0;
+  padding: 20px;
+  background: linear-gradient(135deg, var(--surface2) 0%, var(--surface) 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x mandatory;
+}
+
+.car-block {
+  flex: 1;
+  min-width: 72px;
+  padding: 20px 10px 16px;
+  border-radius: var(--radius-sm);
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  position: relative;
+  border: 2px solid transparent;
+  scroll-snap-align: start;
+}
+
+.car-block:hover {
+  transform: translateY(-8px) scale(1.05);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+  border-color: var(--accent);
+}
+
+.car-best {
+  outline: 3px solid var(--green);
+  box-shadow: 0 6px 24px rgba(52, 211, 153, 0.35);
+  will-change: transform;
+  animation: car-best-pulse 2s ease-in-out infinite;
+}
+
+@keyframes car-best-pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.03);
+  }
+}
+
+.car-best::before {
+  content: '⭐';
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 1.3rem;
+  animation: bounce 1s ease-in-out infinite;
+}
+
+@keyframes bounce {
+  0%, 100% {
+    transform: translateX(-50%) translateY(0);
+  }
+  50% {
+    transform: translateX(-50%) translateY(-4px);
+  }
+}
+
+.car-worst {
+  opacity: .6;
+  filter: grayscale(30%);
+}
+
+.car-number {
+  font-size: .75rem;
+  font-weight: 700;
+  opacity: .9;
+  letter-spacing: 0.02em;
+}
+
+.car-score {
+  font-size: 1.5rem;
+  font-weight: 900;
+  margin: 6px 0;
+  letter-spacing: -0.02em;
+}
+
+.car-rank {
+  font-size: .7rem;
+  opacity: .75;
+  font-weight: 600;
+}
+
+/* ───── 칸 상세 ───── */
+#car-detail {
+  display: none; background: var(--surface2);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 24px; margin-top: 12px;
+}
+#car-detail.visible { display: block; }
+#car-detail h3 { margin-bottom: 16px; font-size: 1rem; }
+.detail-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.detail-label { color: var(--text-dim); font-size: .85rem; }
+.detail-value { font-weight: 700; }
+.detail-value.benefit { color: var(--green); }
+.detail-value.penalty { color: var(--red); }
+.detail-bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; margin-top: 16px; background: var(--surface); }
+.bar-benefit { background: var(--green); transition: width .3s; }
+.bar-penalty { background: var(--red); transition: width .3s; }
+.bar-labels { display: flex; justify-content: space-between; font-size: .75rem; margin-top: 6px; }
+.bar-labels .benefit { color: var(--green); }
+.bar-labels .penalty { color: var(--red); }
+
+/* ───── BP 차트 ───── */
+.bp-chart { margin-top: 12px; }
+.bp-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.bp-label { width: 55px; font-size: .78rem; font-weight: 600; text-align: right; color: var(--text-dim); flex-shrink: 0; }
+.bp-bars { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.bp-bar {
+  height: 16px; border-radius: 4px; font-size: .75rem; line-height: 16px;
+  padding-left: 6px; color: var(--bg); min-width: 2px; transition: width .3s;
+}
+.bp-bar.benefit { background: var(--green); }
+.bp-bar.penalty { background: var(--red); }
+
+/* ───── 경유역 ───── */
+.route-stations { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
+.station-chip {
+  background: var(--surface2); padding: 5px 12px; border-radius: 20px;
+  font-size: .78rem; color: var(--text); border: 1px solid var(--border);
+}
+
+/* ───── 캘리브레이션 ───── */
+.cal-section {
+  padding: 28px;
+  margin-bottom: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.cal-section:last-of-type {
+  border-bottom: 1px solid var(--border);
+}
+
+.cal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--border);
+}
+
+.cal-header h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.cal-value {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--accent);
+  font-family: 'Courier New', monospace;
+  letter-spacing: .05em;
+}
+
+.cal-section h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+  color: var(--text);
+}
+
+.cal-explain {
+  font-size: .88rem;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+  line-height: 1.6;
+}
+
+.cal-explain-detail {
+  margin-bottom: 16px;
+}
+
+.cal-explain-sub {
+  font-size: .82rem;
+  color: var(--text-dim);
+  margin: 4px 0;
+  line-height: 1.5;
+}
+
+.cal-example {
+  background: var(--surface2);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 12px 0;
+}
+
+.example-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.example-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.example-item:first-child {
+  padding-top: 0;
+}
+
+.example-value {
+  font-family: 'Fira Code', 'Consolas', monospace;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  min-width: 60px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.example-value.low {
+  background: rgba(248, 113, 113, 0.2);
+  color: #f87171;
+}
+
+.example-value.mid {
+  background: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+}
+
+.example-value.high {
+  background: rgba(52, 211, 153, 0.2);
+  color: #34d399;
+}
+
+.example-desc {
+  font-size: 0.82rem;
+  color: var(--text-sub);
+  line-height: 1.4;
+}
+
+.cal-tip {
+  font-size: 0.82rem;
+  color: var(--accent);
+  background: rgba(91, 140, 255, 0.1);
+  padding: 10px 14px;
+  border-radius: 8px;
+  border-left: 3px solid var(--accent);
+  margin-top: 12px;
+}
+
+.cal-hint {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+.range-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: .78rem;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
+}
+
+.cal-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cal-group label {
+  display: block;
+  font-size: .85rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.cal-group input {
+  width: 100%;
+  padding: 12px 14px;
+  background: var(--surface2);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: .95rem;
+  transition: all var(--transition);
+}
+
+.cal-group input:focus {
+  border-color: var(--accent);
+  background: var(--surface3);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(91, 140, 255, 0.1);
+}
+
+
+/* ───── 통계 페이지 그리드 ───── */
+.stats-grid-2col {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 768px) {
+  .stats-grid-2col {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ───── 경로 랭킹 ───── */
+.route-ranking-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.route-ranking-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--surface2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  transition: all var(--transition);
+}
+
+.route-ranking-item:hover {
+  background: var(--surface3);
+  transform: translateX(4px);
+}
+
+.route-rank {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 800;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.route-rank.gold { background: linear-gradient(135deg, #fbbf24, #f59e0b); }
+.route-rank.silver { background: linear-gradient(135deg, #9ca3af, #6b7280); }
+.route-rank.bronze { background: linear-gradient(135deg, #d97706, #b45309); }
+
+.route-info {
+  flex: 1;
+}
+
+.route-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.route-count {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+.route-bar-container {
+  width: 120px;
+  height: 8px;
+  background: var(--surface);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.route-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--green));
+  border-radius: 4px;
+  transition: width 0.6s ease;
+}
+
+
+/* ───── 피드백 위젯 ───── */
+.feedback-widget {
+  margin-top: 32px;
+  animation: slideInUp 0.4s ease;
+}
+
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.feedback-fadeout {
+  animation: fadeOut 0.3s ease forwards;
+}
+
+@keyframes fadeOut {
+  to {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+.feedback-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  text-align: center;
+}
+
+.feedback-card.feedback-success {
+  border-color: var(--green);
+  background: linear-gradient(135deg, var(--surface) 0%, rgba(52, 211, 153, 0.05) 100%);
+}
+
+.feedback-title {
+  font-size: 1.1rem;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.feedback-subtitle {
+  font-size: 0.9rem;
+  color: var(--text-dim);
+  margin-bottom: 20px;
+}
+
+.feedback-options {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.feedback-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 20px;
+  background: var(--surface2);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition);
+  font-size: 0.9rem;
+  color: var(--text);
+  min-width: 100px;
+}
+
+.feedback-btn .feedback-icon {
+  font-size: 2rem;
+}
+
+.feedback-btn:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  background: var(--surface3);
+}
+
+.feedback-btn.helpful:hover {
+  border-color: var(--green);
+}
+
+.feedback-btn.not-helpful:hover {
+  border-color: var(--red);
+}
+
+.feedback-skip {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 8px;
+  transition: var(--transition);
+}
+
+.feedback-skip:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+.feedback-detailed-options {
+  text-align: left;
+  margin-bottom: 16px;
+}
+
+.feedback-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  margin-bottom: 8px;
+  background: var(--surface2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.feedback-checkbox:hover {
+  background: var(--surface3);
+}
+
+.feedback-checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.feedback-checkbox span {
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.feedback-comment {
+  width: 100%;
+  padding: 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.9rem;
+  resize: vertical;
+  min-height: 80px;
+  margin-bottom: 16px;
+}
+
+.feedback-comment:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.feedback-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+/* ───── 추천 이유 설명 UI ───── */
+.explanation-container {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-top: 16px;
+}
+
+.explanation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.explanation-header h3 {
+  font-size: 1.1rem;
+  color: var(--text);
+  margin: 0;
+}
+
+.explanation-section {
+  margin-bottom: 20px;
+}
+
+.explanation-section h4 {
+  font-size: 0.95rem;
+  color: var(--accent);
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.strategy-tips .info-text {
+  margin-bottom: 8px;
+  line-height: 1.6;
+}
+
+.strategy-tips .strategy-good {
+  border-left: 3px solid var(--green);
+  padding-left: 12px;
+}
+
+.strategy-tips .strategy-caution {
+  border-left: 3px solid #f59e0b;
+  padding-left: 12px;
+}
+
+.score-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.score-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--surface2);
+}
+
+.score-item.benefit {
+  border-left: 4px solid var(--green);
+}
+
+.score-item.penalty {
+  border-left: 4px solid var(--red);
+}
+
+.score-item.total {
+  border-left: 4px solid var(--accent);
+  background: var(--surface3);
+  font-weight: 600;
+}
+
+.score-label {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.score-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* ───── Score Ratio Bar ───── */
+.score-ratio-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 12px 0 6px;
+  background: var(--surface2);
+}
+.score-ratio-benefit { background: var(--green); transition: width .4s ease; }
+.score-ratio-penalty { background: var(--red); transition: width .4s ease; }
+.score-ratio-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: .78rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.benefit-text { color: var(--green); }
+.penalty-text { color: var(--red); }
+
+.contribution-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.contribution-bar-wrapper {
+  display: grid;
+  grid-template-columns: 100px 1fr 60px;
+  align-items: center;
+  gap: 12px;
+}
+
+.contribution-station {
+  font-size: 0.9rem;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.contribution-bar-container {
+  background: var(--surface2);
+  border-radius: 4px;
+  height: 24px;
+  overflow: hidden;
+}
+
+.contribution-bar {
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.6s ease;
+}
+
+.contribution-value {
+  font-size: 0.85rem;
+  color: var(--green);
+  font-weight: 600;
+  text-align: right;
+}
+
+.facility-info, .info-text {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.facility-info strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.summary-text {
+  background: var(--surface2);
+  padding: 16px;
+  border-radius: var(--radius-sm);
+  border-left: 4px solid var(--accent);
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.comparison-container {
+  padding: 20px;
+}
+
+.comparison-container h3 {
+  margin-bottom: 16px;
+  color: var(--text);
+}
+
+.comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 12px;
+}
+
+.comparison-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  text-align: center;
+}
+
+.comparison-car-num {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.comparison-score {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--accent);
+  margin: 8px 0;
+}
+
+.comparison-breakdown {
+  display: flex;
+  justify-content: space-around;
+  font-size: 0.75rem;
+  margin-top: 8px;
+}
+
+.mini-benefit {
+  color: var(--green);
+}
+
+.mini-penalty {
+  color: var(--red);
+}
+
+
+/* ───── 경로 비교 섹션 ───── */
+#route-compare-card .card-header {
+  margin-bottom: 8px;
+}
+
+#route-compare-card #compare-section {
+  margin-top: 16px;
+}
+
+.compare-input-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 16px;
+  align-items: end;
+  margin-bottom: 24px;
+  padding: 20px;
+  background: var(--surface2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.compare-input-row .btn-primary {
+  height: 46px;
+  padding: 0 24px;
+  white-space: nowrap;
+}
+
+.comparison-results-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-top: 16px;
+}
+
+.comparison-route-card {
+  background: var(--surface2);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  transition: all var(--transition);
+}
+
+.comparison-route-card.winner {
+  border-color: var(--green);
+  background: linear-gradient(135deg, var(--surface2), rgba(52, 211, 153, 0.08));
+}
+
+.comparison-route-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.comparison-route-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.comparison-route-badge {
+  font-size: 0.75rem;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-weight: 600;
+}
+
+.comparison-route-badge.current {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.comparison-route-badge.compare {
+  background: var(--surface3);
+  color: var(--text-dim);
+}
+
+.comparison-route-badge.best {
+  background: var(--green);
+  color: var(--bg);
+}
+
+.comparison-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.comparison-stat {
+  text-align: center;
+  padding: 12px;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+}
+
+.comparison-stat-value {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.comparison-stat-label {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.comparison-verdict {
+  margin-top: 20px;
+  padding: 16px;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  border-left: 4px solid var(--green);
+  text-align: center;
+}
+
+.comparison-verdict-text {
+  font-size: 0.95rem;
+  color: var(--text);
+  line-height: 1.6;
+}
+
+.comparison-verdict-text strong {
+  color: var(--green);
+}
+
+@media (max-width: 768px) {
+  .compare-input-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .comparison-results-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ───── 카카오 맵 ───── */
+.map-card {
+  overflow: hidden;
+}
+
+.metro-map-container {
+  height: 0;
+  overflow: hidden;
+  transition: height 0.4s ease;
+  border-radius: 0 0 var(--radius) var(--radius);
+  background: var(--surface2);
+}
+
+.metro-map-container.map-visible {
+  height: 400px;
+  margin-top: 16px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.map-header {
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.map-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.map-toggle-btn span {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* 지도 내 커스텀 인포윈도우 */
+.map-infowindow {
+  padding: 10px 14px;
+  background: var(--surface);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.map-station-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.map-station-label.start {
+  color: #34d399;
+}
+
+.map-station-label.end {
+  color: #f87171;
+}
+
+/* 지도 로딩 상태 */
+.metro-map-container.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.metro-map-container.loading::after {
+  content: '지도 로딩 중...';
+  color: var(--text-dim);
+  font-size: 14px;
+}
+
+@media (max-width: 768px) {
+  .metro-map-container.map-visible {
+    height: 300px;
+  }
+}
+
+
+/* ───── Detail Row ───── */
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-row:last-child {
+  border-bottom: none;
+}
+
+.detail-label {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.detail-value {
+  font-size: 0.95rem;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.detail-value.benefit {
+  color: var(--green);
+}
+
+.detail-value.penalty {
+  color: var(--red);
+}
+
+
+/* ───── 데이터 신선도 표시 ───── */
+.data-quality-badges.data-freshness {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, var(--surface), rgba(52, 211, 153, 0.04));
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  align-items: center;
+}
+
+.data-freshness .dq-badge {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 14px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+
+/* ───── 민감도 분석 차트 (Chart.js) ───── */
+#sensitivity-chart {
+  margin-top: 20px;
+}
+
+#sensitivity-chart canvas {
+  background: var(--surface2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  padding: 12px;
+}
+
+.sensitivity-summary {
+  margin-top: 16px;
+  padding: 14px 16px;
+  background: var(--surface2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+}
+
+.sensitivity-summary-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+
+.sensitivity-changes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sensitivity-change-item {
+  display: inline-block;
+  padding: 4px 12px;
+  background: var(--surface3);
+  border-radius: 14px;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+
+.sensitivity-change-item strong {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* ───── 경로 비교 차트 ───── */
+.comparison-chart-container {
+  margin-top: 20px;
+  padding: 20px;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.comparison-chart-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.comparison-chart-container canvas {
+  background: var(--surface2);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+}
+
+@media (max-width: 768px) {
+  .sensitivity-changes {
+    flex-direction: column;
+  }
+
+  .comparison-chart-container {
+    padding: 12px;
+  }
+}
+
+/* ───── 기대착석시간 (히어로) ───── */
+.result-best-seat-time {
+  display: block;
+  font-size: .82rem;
+  font-weight: 600;
+  color: var(--accent);
+  margin-top: 6px;
+  padding: 4px 10px;
+  background: rgba(91, 140, 255, 0.1);
+  border-radius: 8px;
+  letter-spacing: -0.01em;
+}
+
+/* ───── 기대착석시간 (열차 칸 시각화) ───── */
+.car-seat-time {
+  font-size: .65rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  margin-top: 2px;
+  opacity: 0.9;
+}
+
+/* ───── 노선도 맵 카드 ───── */
+.map-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.map-btn-group {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.map-toggle-btn,
+.map-reset-btn {
+  white-space: nowrap;
+  font-size: .85rem;
+  padding: 8px 16px;
+}
+
+.metro-map-image-wrapper {
+  margin-top: 12px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+/* ───── 파라미터 UI 개선 ───── */
+.cal-explain {
+  color: var(--text);
+  font-size: 0.9rem;
+  line-height: 1.7;
+  margin-bottom: 6px;
+}
+
+.cal-explain-sub {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  margin-bottom: 4px;
+}
+
+/* ───── v4 착석 확률 표시 ───── */
+.result-best-p-seated {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--green);
+  margin-top: 4px;
+  font-weight: 600;
+}
+
+.v4-prob-section {
+  padding: 16px;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.prob-main {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.prob-value {
+  font-size: 2rem;
+  font-weight: 900;
+  color: var(--green);
+  letter-spacing: -0.02em;
+}
+
+.prob-label {
+  font-size: 0.88rem;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.prob-bar {
+  height: 10px;
+  background: var(--surface2);
+  border-radius: 5px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.prob-bar-fill {
+  height: 100%;
+  border-radius: 5px;
+  background: linear-gradient(90deg, var(--accent), var(--green));
+  transition: width 0.5s ease;
+}
+
+/* ───── 경유역 포착률 표시 ───── */
+.contribution-capture {
+  font-size: 0.72rem;
+  color: var(--accent);
+  font-weight: 600;
+  min-width: 38px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* ───── 착석 피드백 버튼 ───── */
+.seat-feedback-btns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 16px 0 12px;
+}
+
+.seat-btn-yes,
+.seat-btn-no {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 56px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 2px solid transparent;
+}
+
+.seat-btn-icon {
+  font-size: 1.4rem;
+}
+
+.seat-btn-yes {
+  background: var(--green-dim);
+  color: var(--green);
+  border-color: rgba(52, 211, 153, 0.3);
+}
+
+.seat-btn-yes:hover {
+  background: var(--green);
+  color: var(--bg);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(52, 211, 153, 0.3);
+}
+
+.seat-btn-no {
+  background: var(--surface2);
+  color: var(--text-dim);
+  border-color: var(--border);
+}
+
+.seat-btn-no:hover {
+  background: var(--red-dim);
+  color: var(--red);
+  border-color: rgba(248, 113, 113, 0.3);
+  transform: translateY(-2px);
+}
+
+
+/* ───── 공유 버튼 ───── */
+.result-share-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: var(--transition);
+}
+
+.result-share-btn:hover {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+
+.result-hero {
+  position: relative;
+}
+

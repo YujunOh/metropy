@@ -1,0 +1,97 @@
+/* =========================================================
+   Metropy — 서울 지하철 착석 효용 최적화
+   CSS Variables & Theme Definitions
+   ========================================================= */
+
+/* ───── 다크 모드 (기본) ───── */
+:root {
+  --bg: #0a0c14;
+  --bg2: #0f1220;
+  --surface: #151929;
+  --surface2: #1c2137;
+  --surface3: #232845;
+  --border: #2a3050;
+  --text: #e8eaf0;
+  --text-dim: #7c829e;
+  --text-muted: #5a6070;
+  --accent: #5b8cff;
+  --accent2: #3d6fe8;
+  --green: #34d399;
+  --green-dim: rgba(52,211,153,.12);
+  --red: #f87171;
+  --red-dim: rgba(248,113,113,.12);
+  --yellow: #fbbf24;
+  --radius: 16px;
+  --radius-sm: 10px;
+  --shadow: 0 8px 32px rgba(0,0,0,.4);
+  --transition: .2s ease;
+  --max-w: 1080px;
+  --nav-h: 60px;
+}
+
+/* ───── 라이트 모드 ───── */
+[data-theme="light"] {
+  --bg: #f5f7fa;
+  --bg2: #eef1f6;
+  --surface: #ffffff;
+  --surface2: #f0f2f5;
+  --surface3: #e8eaef;
+  --border: #d1d5dc;
+  --text: #1a1d26;
+  --text-dim: #5a6070;
+  --text-muted: #6b7280;
+  --accent: #4a7cf5;
+  --accent2: #3366e0;
+  --green: #22c088;
+  --green-dim: rgba(34,192,136,.15);
+  --red: #e55555;
+  --red-dim: rgba(229,85,85,.15);
+  --yellow: #e5a500;
+  --shadow: 0 8px 32px rgba(0,0,0,.12);
+}
+
+/* ───── 라이트 모드 하드코딩 보정 ───── */
+[data-theme="light"] .navbar {
+  background: rgba(245, 247, 250, .92);
+}
+
+[data-theme="light"] .loading-overlay {
+  background: rgba(245, 247, 250, .95);
+}
+
+[data-theme="light"] .card:hover {
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light"] .autocomplete-suggestions {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+[data-theme="light"] .modal-content {
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme="light"] .modal-overlay {
+  background: rgba(0, 0, 0, .5);
+}
+
+[data-theme="light"] .car-block:hover {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme="light"] .swap-btn {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .btn-hero-secondary:hover,
+[data-theme="light"] .btn-hero-github:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light"] .stat-box:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .shortcut-item kbd {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+}

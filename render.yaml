@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: metropy
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements-prod.txt
+    startCommand: python -m uvicorn api.app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: RELOAD
+        value: "False"
+      - key: LOG_LEVEL
+        value: "warning"
+    autoDeploy: true

@@ -1,0 +1,16 @@
+# Metropy 운영 의존성 (dev 도구 제외)
+# pip install -r requirements-prod.txt
+
+# 데이터 처리
+pandas>=2.1.0,<4.0
+numpy>=1.24.0,<3.0
+
+# 웹 프레임워크
+fastapi>=0.104.0,<1.0
+uvicorn[standard]>=0.24.0,<1.0
+
+# 유틸리티
+python-dotenv>=1.0.0,<2.0
+
+# 선택적 (날씨 보정, 통계 검증)
+scipy>=1.11.0,<2.0

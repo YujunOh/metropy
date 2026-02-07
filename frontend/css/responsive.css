@@ -1,0 +1,396 @@
+/* =========================================================
+   Metropy — Responsive, Animations, Print
+   Media Queries, Transitions, Accessibility
+   ========================================================= */
+
+.green { color: var(--green) !important; -webkit-text-fill-color: var(--green); }
+.red { color: var(--red) !important; -webkit-text-fill-color: var(--red); }
+
+.section-cta { padding: 60px 24px; }
+
+
+/* =========================================================
+   반응형
+   ========================================================= */
+
+/* ───── 태블릿 (1024px 이하) ───── */
+@media (max-width: 1024px) {
+  .hero-stats { grid-template-columns: repeat(2, 1fr); }
+  .steps-grid { grid-template-columns: 1fr 1fr; gap: 16px; }
+  .formula-grid { grid-template-columns: 1fr 1fr; }
+  .findings-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .quick-access { grid-template-columns: 1fr; gap: 16px; }
+  .comparison-results-grid { grid-template-columns: 1fr; }
+  .shortcuts-grid { grid-template-columns: 1fr; }
+  .result-hero { gap: 24px; }
+}
+
+@media (max-width: 768px) {
+  .nav-links { display: none; }
+  .nav-hamburger { display: flex; }
+  .hero { padding: 40px 20px; }
+  .hero-stats { grid-template-columns: repeat(2, 1fr); }
+  .compare-grid { grid-template-columns: 1fr; }
+  .steps-grid { grid-template-columns: 1fr; }
+  .formula-grid { grid-template-columns: 1fr 1fr; }
+  .input-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .swap-btn-wrapper {
+    justify-content: center;
+    margin: 8px 0;
+  }
+
+  .swap-btn {
+    transform: rotate(90deg);
+  }
+
+  .swap-btn:hover {
+    transform: rotate(270deg);
+  }
+
+  .card {
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  .hour-section {
+    padding: 16px;
+  }
+  .result-hero { flex-direction: column; text-align: center; }
+  .result-meta { grid-template-columns: repeat(2, 1fr); width: 100%; }
+  .car-block { min-width: 52px; padding: 14px 4px 10px; }
+  .car-score { font-size: 1.1rem; }
+  .cal-grid { grid-template-columns: 1fr 1fr; }
+  .findings-grid { grid-template-columns: 1fr; }
+  .data-row { grid-template-columns: 1fr; gap: 2px; padding: 10px 12px; }
+  .data-row.header { display: none; }
+  .app-container { padding: 20px 16px; }
+  .card { padding: 20px; }
+  .section { padding: 48px 16px; }
+  .quick-access { padding: 16px; }
+  .hero-desc br { display: none; }
+  .result-best { min-width: auto; }
+  .contribution-bar-wrapper { grid-template-columns: 70px 1fr 50px; gap: 8px; }
+  .lf-legend { display: none; }
+}
+
+@media (max-width: 480px) {
+  .hero-title { font-size: 1.8rem; }
+  .hero-actions { flex-direction: column; }
+  .btn-hero, .btn-hero-secondary, .btn-hero-github { width: 100%; text-align: center; justify-content: center; }
+  .hero-stats { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .contact-grid { grid-template-columns: 1fr; }
+  .stat { padding: 12px 4px; }
+  .stat-number { font-size: 1.2rem; }
+  .formula-grid { grid-template-columns: 1fr; }
+  .formula-main { font-size: .85rem; padding: 12px; }
+  .result-meta { grid-template-columns: 1fr; }
+  .cal-grid { grid-template-columns: 1fr; }
+  .train { gap: 2px; padding: 10px; }
+  .car-block { min-width: 44px; padding: 10px 2px 8px; }
+  .car-score { font-size: .95rem; }
+  .car-number { font-size: .6rem; }
+  canvas { max-height: 250px !important; }
+  .hour-control { gap: 10px; }
+  .hour-time { font-size: 1.3rem; }
+  .section-title { font-size: 1.3rem; margin-bottom: 32px; }
+  .card-title { font-size: 1rem; }
+  .card-desc { font-size: .82rem; }
+  .compare-card { padding: 20px; }
+  .compare-card h3 { font-size: .95rem; }
+  .step-card { padding: 24px 16px; }
+  .about-article h1 { font-size: 1.5rem; }
+  .about-article h2 { font-size: 1rem; }
+  .data-management-btns { flex-direction: column; }
+  .data-management-btns .btn-secondary { width: 100%; text-align: center; }
+  .feedback-options { flex-direction: column; align-items: stretch; }
+  .feedback-btn { flex-direction: row; min-width: unset; }
+  .quick-explain-btn { font-size: .82rem; padding: 8px 14px; }
+  .quick-explain-btn span { font-size: .95rem; }
+  .contribution-bar-wrapper { grid-template-columns: 60px 1fr 40px; }
+}
+
+/* ───── 터치 최적화 ───── */
+@media (hover: none) and (pointer: coarse) {
+  /* 터치 디바이스에서 버튼 크기 확대 */
+  .btn-hero, .btn-hero-secondary, .recommend-btn, .btn-primary, .btn-secondary {
+    min-height: 48px;
+    padding: 14px 24px;
+  }
+
+  /* 카드 터치 영역 확대 */
+  .car-block {
+    padding: 16px 8px 12px;
+    min-width: 60px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* 스와이프 가능한 요소 표시 */
+  .train {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x mandatory;
+    padding: 16px 8px;
+  }
+
+  .car-block {
+    scroll-snap-align: start;
+  }
+
+  /* 역 선택 드롭다운 크기 확대 */
+  .station-select, .station-search {
+    min-height: 44px;
+    font-size: 16px; /* iOS zoom 방지 */
+  }
+
+  /* 슬라이더 터치 영역 확대 */
+  input[type="range"] {
+    height: 32px;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* ───── 가로 모드 최적화 ───── */
+@media (max-width: 768px) and (orientation: landscape) {
+  .hero { padding: 32px 20px; }
+  .hero-title { font-size: 1.6rem; }
+  .hero-stats { grid-template-columns: repeat(4, 1fr); }
+  .section { padding: 32px 20px; }
+}
+
+/* ───── 다크모드 대응 (선택사항) ───── */
+@media (prefers-color-scheme: light) {
+  /* 라이트 모드는 현재 구현하지 않음 - 다크 테마 유지 */
+}
+
+/* ───── 페이지 전환 + 카드 입장 애니메이션 ───── */
+.page.active {
+  animation: pageEnter .35s ease-out;
+}
+
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.page.active .card,
+.page.active .cal-section,
+.page.active .compare-card,
+.page.active .step-card,
+.page.active .stat {
+  animation: cardStagger .4s ease-out both;
+}
+
+.page.active .card:nth-child(1) { animation-delay: .05s; }
+.page.active .card:nth-child(2) { animation-delay: .1s; }
+.page.active .card:nth-child(3) { animation-delay: .15s; }
+.page.active .card:nth-child(4) { animation-delay: .2s; }
+.page.active .card:nth-child(5) { animation-delay: .25s; }
+
+.page.active .step-card:nth-child(1) { animation-delay: .08s; }
+.page.active .step-card:nth-child(2) { animation-delay: .16s; }
+.page.active .step-card:nth-child(3) { animation-delay: .24s; }
+
+.page.active .stat:nth-child(1) { animation-delay: .05s; }
+.page.active .stat:nth-child(2) { animation-delay: .1s; }
+.page.active .stat:nth-child(3) { animation-delay: .15s; }
+.page.active .stat:nth-child(4) { animation-delay: .2s; }
+
+@keyframes cardStagger {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 결과 섹션 칸 시각화 등장 */
+.car-block {
+  animation: carPop .3s ease-out both;
+}
+.car-block:nth-child(1) { animation-delay: .02s; }
+.car-block:nth-child(2) { animation-delay: .04s; }
+.car-block:nth-child(3) { animation-delay: .06s; }
+.car-block:nth-child(4) { animation-delay: .08s; }
+.car-block:nth-child(5) { animation-delay: .10s; }
+.car-block:nth-child(6) { animation-delay: .12s; }
+.car-block:nth-child(7) { animation-delay: .14s; }
+.car-block:nth-child(8) { animation-delay: .16s; }
+.car-block:nth-child(9) { animation-delay: .18s; }
+.car-block:nth-child(10) { animation-delay: .20s; }
+
+@keyframes carPop {
+  from { opacity: 0; transform: scale(.85) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* ───── Focus Visible (접근성) ───── */
+.dow-chip:focus-visible,
+.quick-item:focus-visible,
+.icon-btn:focus-visible,
+.feedback-btn:focus-visible,
+.feedback-skip:focus-visible,
+.seat-btn-yes:focus-visible,
+.seat-btn-no:focus-visible,
+.car-block:focus-visible,
+.quick-explain-btn:focus-visible,
+.comparison-card:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+
+/* ───── 가로 모드 최적화 ───── */
+@media (max-width: 768px) and (orientation: landscape) {
+  .hero { padding: 32px 20px; }
+  .hero-title { font-size: 1.6rem; }
+  .hero-stats { grid-template-columns: repeat(4, 1fr); }
+  .section { padding: 32px 20px; }
+}
+
+/* ───── 다크모드 대응 (선택사항) ───── */
+@media (prefers-color-scheme: light) {
+  /* 라이트 모드는 현재 구현하지 않음 - 다크 테마 유지 */
+}
+
+
+/* ───── 페이지 전환 + 카드 입장 애니메이션 ───── */
+.page.active {
+  animation: pageEnter .35s ease-out;
+}
+
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.page.active .card,
+.page.active .cal-section,
+.page.active .compare-card,
+.page.active .step-card,
+.page.active .stat {
+  animation: cardStagger .4s ease-out both;
+}
+
+.page.active .card:nth-child(1) { animation-delay: .05s; }
+.page.active .card:nth-child(2) { animation-delay: .1s; }
+.page.active .card:nth-child(3) { animation-delay: .15s; }
+.page.active .card:nth-child(4) { animation-delay: .2s; }
+.page.active .card:nth-child(5) { animation-delay: .25s; }
+
+.page.active .step-card:nth-child(1) { animation-delay: .08s; }
+.page.active .step-card:nth-child(2) { animation-delay: .16s; }
+.page.active .step-card:nth-child(3) { animation-delay: .24s; }
+
+.page.active .stat:nth-child(1) { animation-delay: .05s; }
+.page.active .stat:nth-child(2) { animation-delay: .1s; }
+.page.active .stat:nth-child(3) { animation-delay: .15s; }
+.page.active .stat:nth-child(4) { animation-delay: .2s; }
+
+@keyframes cardStagger {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 결과 섹션 칸 시각화 등장 */
+.car-block {
+  animation: carPop .3s ease-out both;
+}
+.car-block:nth-child(1) { animation-delay: .02s; }
+.car-block:nth-child(2) { animation-delay: .04s; }
+.car-block:nth-child(3) { animation-delay: .06s; }
+.car-block:nth-child(4) { animation-delay: .08s; }
+.car-block:nth-child(5) { animation-delay: .10s; }
+.car-block:nth-child(6) { animation-delay: .12s; }
+.car-block:nth-child(7) { animation-delay: .14s; }
+.car-block:nth-child(8) { animation-delay: .16s; }
+.car-block:nth-child(9) { animation-delay: .18s; }
+.car-block:nth-child(10) { animation-delay: .20s; }
+
+@keyframes carPop {
+  from { opacity: 0; transform: scale(.85) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@media (max-width: 768px) {
+  .compare-input-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .comparison-results-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .spinner {
+    animation: none;
+    border: 4px solid var(--accent);
+  }
+}
+
+
+@media (max-width: 768px) {
+  .sensitivity-changes {
+    flex-direction: column;
+  }
+
+  .comparison-chart-container {
+    padding: 12px;
+  }
+}
+
+/* ───── 인쇄 스타일 ───── */
+@media print {
+  /* 기본 레이아웃 */
+  * { color: #000 !important; background: #fff !important; box-shadow: none !important; text-shadow: none !important; }
+  body { font-size: 12pt; line-height: 1.5; }
+
+  /* 불필요한 요소 숨기기 */
+  .navbar, .nav-hamburger, .nav-mobile, .footer,
+  .loading-overlay, .skip-to-content, #aria-live,
+  .recommend-btn, .swap-btn, .gps-btn, .theme-toggle,
+  .hour-tips, .hero-actions, .btn-hero, .btn-hero-secondary, .btn-hero-github,
+  .quick-access, #feedback-widget, .feedback-widget,
+  .compare-input-row, #compare-toggle-btn,
+  .quick-explain-btn, .icon-btn, .sensitivity-btn,
+  .data-management-btns, .btn-row,
+  #map-toggle-btn, #map-reset-btn, #metro-map-image,
+  .hour-btn, .autocomplete-suggestions, .dow-chips,
+  .offline-banner, #compare-section,
+  input[type="range"], select { display: none !important; }
+
+  /* 페이지 표시: 추천 결과만 */
+  .page { display: none !important; }
+  #page-app { display: block !important; }
+  .page.active { display: block !important; }
+
+  /* 결과 카드 스타일 */
+  .card { border: 1px solid #ccc; page-break-inside: avoid; margin-bottom: 12pt; padding: 12pt; }
+  .result-hero { border: 2px solid #000; padding: 12pt; margin-bottom: 12pt; }
+  .result-best-car { font-size: 24pt; font-weight: 700; }
+  .result-best-score { font-size: 14pt; }
+  .meta-item { display: inline-block; margin-right: 16pt; }
+
+  /* 열차 시각화 간소화 */
+  .train { flex-wrap: wrap; }
+  .car-block { border: 1px solid #666; min-width: 60px; }
+
+  /* 차트 영역 */
+  canvas { max-height: 200px !important; }
+
+  /* 링크 URL 표시 */
+  a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 9pt; color: #666 !important; }
+
+  /* 페이지 마진 */
+  @page { margin: 1.5cm; }
+}
