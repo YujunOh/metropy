@@ -21,3 +21,13 @@ tqdm>=4.66.0
 # 데이터 포맷
 openpyxl>=3.1.0
 xlrd>=2.0.1
+
+# 웹 프레임워크
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+httpx>=0.25.0
+
+# 테스팅
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0

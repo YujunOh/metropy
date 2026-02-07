@@ -32,7 +32,6 @@ data/processed/*
 
 # Model files
 *.model
-*.pkl
 models/*.pkl
 models/*.h5
 models/*.pt
@@ -72,3 +71,9 @@ logs/
 .cache/
 *.tmp
 *.temp
+
+# 배포용 런타임 필수 데이터 (예외 - 반드시 맨 끝에 위치)
+!data_processed/alighting_cache.pkl
+!data_processed/interstation_distance_processed.csv
+!data_processed/congestion_long.csv
+!data_raw/fast_exit_line2.json

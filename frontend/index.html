@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Metropy - 서울 지하철 착석 효용 최적화</title>
+  <meta name="description" content="서울 지하철 2호선에서 앉을 확률이 가장 높은 칸을 추천합니다. 공공데이터 기반 SeatScore 시스템.">
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script src="/static/js/theme.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+  <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=4dd9dc56068cb38f0529a5f7fb816bc6"></script>
+  <meta name="theme-color" content="#5b8cff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+</head>
+<body>
+
+  <!-- ==================== 네비게이션 ==================== -->
+  <nav class="navbar">
+    <div class="nav-inner">
+      <a href="#" class="nav-logo" onclick="showPage('landing')">
+        <span class="logo-icon">M</span>
+        <span class="logo-text">METROPY</span>
+      </a>
+      <div class="nav-links">
+        <a href="#" onclick="showPage('landing')" class="nav-link" data-page="landing">소개</a>
+        <a href="#" onclick="showPage('app')" class="nav-link" data-page="app">추천</a>
+        <a href="#" onclick="showPage('stats')" class="nav-link" data-page="stats">통계</a>
+        <a href="#" onclick="showPage('calibrate')" class="nav-link" data-page="calibrate">파라미터</a>
+        <a href="#" onclick="showPage('about')" class="nav-link" data-page="about">연구 배경</a>
+        <button class="theme-toggle" onclick="toggleTheme()" title="테마 전환">
+          <span class="theme-icon-dark">🌙</span>
+          <span class="theme-icon-light">☀️</span>
+        </button>
+      </div>
+      <button class="nav-hamburger" onclick="toggleMobileNav()" aria-label="메뉴">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+    <div class="nav-mobile" id="mobile-nav">
+      <a href="#" onclick="showPage('landing');toggleMobileNav()">소개</a>
+      <a href="#" onclick="showPage('app');toggleMobileNav()">추천</a>
+      <a href="#" onclick="showPage('stats');toggleMobileNav()">통계</a>
+      <a href="#" onclick="showPage('calibrate');toggleMobileNav()">파라미터</a>
+      <a href="#" onclick="showPage('about');toggleMobileNav()">연구 배경</a>
+      <a href="#" onclick="toggleTheme();toggleMobileNav()" style="display:flex;align-items:center;gap:8px">
+        <span id="mobile-theme-icon">🌙</span> 테마 전환
+      </a>
+    </div>
+  </nav>
+
+  <!-- ==================== 랜딩 페이지 ==================== -->
+  <div id="page-landing" class="page active">
+    <!-- 히어로 -->
+    <section class="hero">
+      <div class="hero-inner">
+        <div class="hero-badge">Seoul Metro Line 2</div>
+        <h1 class="hero-title">
+          어느 칸에 타야<br><span class="gradient-text">앉을 수 있을까?</span>
+        </h1>
+        <p class="hero-desc">
+          Metropy는 서울 지하철 2호선의 공공데이터를 분석하여,<br>
+          이동 중 착석 가능성이 가장 높은 <strong>최적 탑승 칸</strong>을 추천합니다.
+        </p>
+        <div class="hero-actions">
+          <button class="btn-hero" onclick="showPage('app')">지금 추천받기</button>
+          <button class="btn-hero-secondary" onclick="showPage('about')">연구 배경 보기</button>
+        </div>
+        <div class="hero-stats">
+          <div class="stat">
+            <span class="stat-number">316,800</span>
+            <span class="stat-label">혼잡도 데이터</span>
+          </div>
+          <div class="stat">
+            <span class="stat-number">450</span>
+            <span class="stat-label">빠른환승 레코드</span>
+          </div>
+          <div class="stat">
+            <span class="stat-number">43</span>
+            <span class="stat-label">분석 대상 역</span>
+          </div>
+          <div class="stat">
+            <span class="stat-number">10</span>
+            <span class="stat-label">칸별 점수</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 핵심 개념 -->
+    <section class="section">
+      <div class="section-inner">
+        <h2 class="section-title">기존 지하철 앱과 <span class="gradient-text">무엇이 다른가요?</span></h2>
+        <div class="compare-grid">
+          <div class="compare-card old">
+            <div class="compare-icon">X</div>
+            <h3>기존 서비스</h3>
+            <p>"<strong>빠른 하차</strong>"에 집중합니다.</p>
+            <ul>
+              <li>출구에서 가장 가까운 칸</li>
+              <li>환승 통로에 가장 가까운 문</li>
+              <li>내린 이후의 편의성 최적화</li>
+            </ul>
+          </div>
+          <div class="compare-card new">
+            <div class="compare-icon">M</div>
+            <h3>Metropy</h3>
+            <p>"<strong>착석 경험</strong>"에 집중합니다.</p>
+            <ul>
+              <li>이동 중 앉을 확률이 높은 칸</li>
+              <li>중간역 하차 패턴 분석</li>
+              <li>타는 순간부터의 효용 최적화</li>
+            </ul>
+          </div>
+        </div>
+        <div class="premise-box">
+          <div class="premise-quote">"</div>
+          <p>
+            출구까지 10분 단축하는 선택보다,<br>
+            이동 중 <strong>5분이라도 앉아서</strong> 갈 수 있는 선택이 더 가치 있다.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 작동 원리 -->
+    <section class="section section-dark">
+      <div class="section-inner">
+        <h2 class="section-title">어떻게 <span class="gradient-text">작동하나요?</span></h2>
+        <div class="steps-grid">
+          <div class="step-card">
+            <div class="step-num">1</div>
+            <h3>경로 입력</h3>
+            <p>출발역, 도착역, 탑승 시간을 선택합니다. 방향(내선/외선)은 자동으로 판별됩니다.</p>
+          </div>
+          <div class="step-card">
+            <div class="step-num">2</div>
+            <h3>SeatScore 계산</h3>
+            <p>경유하는 각 역의 하차량, 잔여 거리, 시설 가중치를 결합하여 칸별 착석 효용 점수를 산출합니다.</p>
+          </div>
+          <div class="step-card">
+            <div class="step-num">3</div>
+            <h3>최적 칸 추천</h3>
+            <p>10량 열차의 각 칸을 점수 순으로 랭킹하여, 가장 앉기 좋은 칸과 피해야 할 칸을 알려드립니다.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SeatScore 공식 -->
+    <section class="section">
+      <div class="section-inner">
+        <h2 class="section-title"><span class="gradient-text">SeatScore</span> 공식</h2>
+        <div class="formula-card">
+          <div class="formula-main">
+            SeatScore(c) = &Sigma;<sub>s</sub> [ D(s) &times; T(s&rarr;dest) &times; w(c,s) &times; &alpha;(h) ] &minus; &beta; &times; B(c,h)
+          </div>
+          <div class="formula-grid">
+            <div class="formula-item">
+              <span class="formula-symbol">D(s)</span>
+              <span class="formula-desc">중간역 s의 하차량<br><small>316K 혼잡도 데이터 기반</small></span>
+            </div>
+            <div class="formula-item">
+              <span class="formula-symbol">T(s&rarr;dest)</span>
+              <span class="formula-desc">잔여 이동 거리(km)<br><small>멀수록 착석 시간이 길어져 효용 증가</small></span>
+            </div>
+            <div class="formula-item">
+              <span class="formula-symbol">w(c,s)</span>
+              <span class="formula-desc">시설 가중치<br><small>에스컬레이터(1.5) &gt; 엘리베이터(1.2) &gt; 계단(1.0)</small></span>
+            </div>
+            <div class="formula-item">
+              <span class="formula-symbol">&alpha;(h)</span>
+              <span class="formula-desc">시간대 배율<br><small>출근러시 1.4 / 퇴근 1.3 / 심야 0.6</small></span>
+            </div>
+            <div class="formula-item">
+              <span class="formula-symbol">&beta;</span>
+              <span class="formula-desc">탑승 페널티 계수<br><small>기본값 0.3 (조정 가능)</small></span>
+            </div>
+            <div class="formula-item">
+              <span class="formula-symbol">B(c,h)</span>
+              <span class="formula-desc">탑승 혼잡 페널티<br><small>출구 근처 칸은 탑승 인원도 많음</small></span>
+            </div>
+          </div>
+        </div>
+        <div class="insight-box">
+          <h3>핵심 통찰: 중간 칸의 이중성</h3>
+          <p>
+            지하철 역은 플랫폼 중앙에 계단/에스컬레이터가 집중되어 있습니다.
+            중간 칸(3~7호차) 근처에서 하차하는 승객이 많아 <strong class="green">자리가 빨리 남</strong>지만,
+            동시에 탑승하는 승객도 몰려 <strong class="red">초기 착석이 어렵</strong>습니다.
+            SeatScore v2는 이 트레이드오프를 &beta; 페널티로 명시적으로 모델링합니다.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="section section-cta">
+      <div class="section-inner" style="text-align:center">
+        <h2 class="section-title">직접 <span class="gradient-text">확인해보세요</span></h2>
+        <p style="color:var(--text-dim);margin-bottom:24px">출발역과 도착역을 선택하면 최적 칸을 바로 확인할 수 있습니다.</p>
+        <button class="btn-hero" onclick="showPage('app')">추천 시작하기</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- ==================== 추천 앱 페이지 ==================== -->
+  <div id="page-app" class="page">
+    <div class="app-container">
+      <div id="error-msg" class="message"></div>
+
+      <!-- 즐겨찾기 & 히스토리 -->
+      <div class="quick-access" id="quick-access" style="display:none">
+        <div class="quick-section">
+          <h3>⭐ 즐겨찾기</h3>
+          <div id="favorites-list" class="quick-list"></div>
+        </div>
+        <div class="quick-section">
+          <h3>🕐 최근 검색</h3>
+          <div id="history-list" class="quick-list"></div>
+        </div>
+      </div>
+
+      <!-- 입력 카드 -->
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">경로 입력</h2>
+          <button class="icon-btn" id="add-favorite-btn" title="즐겨찾기 추가" style="display:none">⭐</button>
+        </div>
+        <div class="input-grid">
+          <div class="input-group">
+            <label>출발역</label>
+            <div class="select-wrapper">
+              <input type="text" id="boarding-search" class="station-search" placeholder="역명 검색..." autocomplete="off">
+              <select id="boarding" class="station-select"></select>
+            </div>
+          </div>
+          <div class="swap-btn-wrapper">
+            <button class="swap-btn" onclick="swapStations()" title="출발/도착 교환">&#8644;</button>
+          </div>
+          <div class="input-group">
+            <label>도착역</label>
+            <div class="select-wrapper">
+              <input type="text" id="destination-search" class="station-search" placeholder="역명 검색..." autocomplete="off">
+              <select id="destination" class="station-select"></select>
+            </div>
+          </div>
+        </div>
+
+        <div class="hour-section">
+          <div class="hour-section-header">
+            <label>탑승 시간</label>
+            <span class="hour-range-info">첫차 05:00 ~ 막차 24:30</span>
+          </div>
+          <div class="hour-control">
+            <button class="hour-btn" onclick="adjustHour(-1)">-</button>
+            <input type="range" id="hour-slider" min="5" max="25" value="8" step="1">
+            <button class="hour-btn" onclick="adjustHour(1)">+</button>
+          </div>
+          <div class="hour-display" id="hour-label">
+            <span class="hour-time">08:00</span>
+            <span class="hour-period" id="hour-period">출근 러시</span>
+          </div>
+          <div class="hour-tips">
+            <span class="tip" data-hour="5">🚇 첫차</span>
+            <span class="tip" data-hour="8">🌅 출근</span>
+            <span class="tip" data-hour="12">☀️ 점심</span>
+            <span class="tip" data-hour="18">🌆 퇴근</span>
+            <span class="tip" data-hour="23">🌙 심야</span>
+            <span class="tip" data-hour="24">🛤️ 막차</span>
+          </div>
+        </div>
+
+        <button class="recommend-btn" id="recommend-btn">
+          <span class="btn-icon">&#9658;</span> 최적 칸 추천
+        </button>
+      </div>
+
+      <!-- 노선도 지도 -->
+      <div class="card map-card">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">🗺️ 2호선 노선도</h2>
+            <p class="card-desc">경로를 지도에서 확인하세요</p>
+          </div>
+          <button class="btn-secondary map-toggle-btn" onclick="toggleMapView()">
+            <span id="map-toggle-icon">📍</span> <span id="map-toggle-text">지도 펼치기</span>
+          </button>
+        </div>
+        <div id="metro-map" class="metro-map-container"></div>
+      </div>
+
+      <!-- 결과 (동적으로 생성됨) -->
+      <div id="result-section"></div>
+    </div>
+  </div>
+
+  <!-- ==================== 캘리브레이션 페이지 ==================== -->
+  <div id="page-calibrate" class="page">
+    <div class="app-container">
+      <div class="card">
+        <h2 class="card-title">하이퍼파라미터 조정</h2>
+        <p class="card-desc">SeatScore 모델의 가중치를 실시간으로 조정하고, 추천 결과의 변화를 확인합니다.</p>
+
+        <!-- Beta -->
+        <div class="cal-section">
+          <div class="cal-header">
+            <h3>&beta; (탑승 혼잡 페널티 계수)</h3>
+            <span class="cal-value" id="beta-value">0.30</span>
+          </div>
+          <input type="range" id="beta-slider" min="0" max="1" step="0.05" value="0.3">
+          <div class="range-labels">
+            <span>0.0 &mdash; 페널티 없음</span>
+            <span>1.0 &mdash; 강한 페널티</span>
+          </div>
+          <div class="cal-explain-detail">
+            <p class="cal-explain"><strong>역할:</strong> 탑승 시 혼잡한 칸에 대한 감점 비율을 조절합니다.</p>
+            <div class="cal-example">
+              <div class="example-item">
+                <span class="example-value low">&beta;=0.0</span>
+                <span class="example-desc">탑승 혼잡 무시 → 하차 기회(Benefit)만 고려. 중간칸(4~6호차) 추천 많음</span>
+              </div>
+              <div class="example-item">
+                <span class="example-value mid">&beta;=0.3</span>
+                <span class="example-desc">균형 설정 (기본값) → Benefit과 Penalty의 적절한 트레이드오프</span>
+              </div>
+              <div class="example-item">
+                <span class="example-value high">&beta;=0.7+</span>
+                <span class="example-desc">혼잡 회피 우선 → 양끝칸(1,10호차)도 추천될 수 있음</span>
+              </div>
+            </div>
+            <p class="cal-tip">💡 출퇴근 시간대에는 &beta;를 높여 혼잡 회피를 강화하는 것이 효과적입니다.</p>
+          </div>
+        </div>
+
+        <!-- 시설 가중치 -->
+        <div class="cal-section">
+          <h3>시설 가중치 w(c,s)</h3>
+          <div class="cal-explain-detail">
+            <p class="cal-explain"><strong>역할:</strong> 역 내 하차 시설 유형별로 하차량 가중치를 부여합니다.</p>
+            <p class="cal-explain-sub">지하철역에서 에스컬레이터 근처에서 가장 많은 승객이 하차하며, 이는 착석 기회를 증가시킵니다.</p>
+          </div>
+          <div class="cal-grid">
+            <div class="cal-group">
+              <label>🔼 에스컬레이터</label>
+              <input type="number" id="w-escalator" value="1.5" step="0.1" min="0.1" max="5">
+              <span class="cal-hint">가장 편리 → 하차 집중</span>
+            </div>
+            <div class="cal-group">
+              <label>🛗 엘리베이터</label>
+              <input type="number" id="w-elevator" value="1.2" step="0.1" min="0.1" max="5">
+              <span class="cal-hint">교통약자/짐 많은 승객</span>
+            </div>
+            <div class="cal-group">
+              <label>🪜 계단</label>
+              <input type="number" id="w-stairs" value="1.0" step="0.1" min="0.1" max="5">
+              <span class="cal-hint">기본값 (기준)</span>
+            </div>
+          </div>
+          <p class="cal-tip">💡 가중치가 높을수록 해당 시설 근처 칸에서 착석 기회가 많다고 판단합니다.</p>
+        </div>
+
+        <!-- Alpha -->
+        <div class="cal-section">
+          <h3>시간대 배율 &alpha;(h)</h3>
+          <div class="cal-explain-detail">
+            <p class="cal-explain"><strong>역할:</strong> 시간대별로 전체 SeatScore에 곱해지는 배율입니다.</p>
+            <p class="cal-explain-sub">러시아워에는 승객이 많아 칸 선택의 중요도가 높아지고, 심야에는 어느 칸이든 착석 가능성이 높아 배율이 낮습니다.</p>
+            <p class="cal-explain-sub">⚡ 시스템은 이 기준값들 사이를 <strong>연속적으로 보간(interpolation)</strong>하여 부드러운 변화를 반영합니다.</p>
+          </div>
+          <div class="cal-grid">
+            <div class="cal-group">
+              <label>🌅 출근 러시 (07-09)</label>
+              <input type="number" id="a-morning" value="1.4" step="0.1" min="0.1" max="3">
+              <span class="cal-hint">가장 혼잡 → 칸 선택 중요</span>
+            </div>
+            <div class="cal-group">
+              <label>🌆 퇴근 러시 (18-20)</label>
+              <input type="number" id="a-evening" value="1.3" step="0.1" min="0.1" max="3">
+              <span class="cal-hint">출근보다 약간 완화</span>
+            </div>
+            <div class="cal-group">
+              <label>☀️ 주간 (10-17)</label>
+              <input type="number" id="a-midday" value="1.0" step="0.1" min="0.1" max="3">
+              <span class="cal-hint">기준값 (보통 혼잡도)</span>
+            </div>
+            <div class="cal-group">
+              <label>🌙 심야 (22-06)</label>
+              <input type="number" id="a-night" value="0.6" step="0.1" min="0.1" max="3">
+              <span class="cal-hint">한산 → 칸 선택 덜 중요</span>
+            </div>
+          </div>
+          <p class="cal-tip">💡 &alpha; > 1.0: 칸 선택 효과 증폭 | &alpha; < 1.0: 칸 선택 효과 감소</p>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn-primary" id="apply-calibration">적용하고 재계산</button>
+          <button class="btn-secondary" id="reset-calibration">기본값 초기화</button>
+        </div>
+      </div>
+
+      <!-- 민감도 분석 -->
+      <div class="card">
+        <h2 class="card-title">&beta; 민감도 분석</h2>
+        <p class="card-desc">
+          &beta;값을 0.0에서 1.0까지 변화시키며 각 칸의 점수 변화를 시각화합니다.
+          추천 페이지에서 선택한 경로를 기준으로 분석합니다.
+        </p>
+        <button class="btn-primary" id="sensitivity-btn">&beta; 민감도 분석 실행</button>
+        <div id="sensitivity-chart" style="margin-top:20px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 통계 페이지 ==================== -->
+  <div id="page-stats" class="page">
+    <div class="app-container">
+      <div class="card">
+        <h2 class="card-title">📊 내 사용 통계</h2>
+        <div id="stats-content"></div>
+      </div>
+
+      <div class="stats-grid-2col">
+        <div class="card">
+          <h2 class="card-title">🎯 추천받은 칸 분포</h2>
+          <p class="card-desc">어떤 칸이 가장 많이 추천되었는지 확인하세요</p>
+          <canvas id="car-stats-chart" style="max-height: 250px;"></canvas>
+        </div>
+        <div class="card">
+          <h2 class="card-title">📈 시간대별 이용</h2>
+          <p class="card-desc">주로 어느 시간대에 검색했는지 분석</p>
+          <canvas id="hour-stats-chart" style="max-height: 250px;"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">🗺️ 자주 이용하는 경로</h2>
+        <p class="card-desc">가장 많이 검색한 경로 TOP 5</p>
+        <div id="route-ranking"></div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">💬 피드백 통계</h2>
+        <div id="feedback-stats"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">🔧 데이터 관리</h2>
+        </div>
+        <div class="data-management-btns">
+          <button class="btn-secondary" onclick="exportUserData()">데이터 내보내기</button>
+          <button class="btn-secondary" onclick="document.getElementById('import-file').click()">데이터 가져오기</button>
+          <button class="btn-secondary danger" onclick="confirmClearData()">데이터 초기화</button>
+          <input type="file" id="import-file" accept=".json" style="display:none" onchange="importUserData(event)">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 연구 배경 페이지 ==================== -->
+  <div id="page-about" class="page">
+    <div class="app-container about-container">
+      <article class="about-article">
+        <h1>Metropy 연구 배경</h1>
+        <p class="about-subtitle">공공데이터 기반 지하철 착석 효용 극대화를 위한 의사결정 모델</p>
+
+        <section>
+          <h2>1. 문제 정의</h2>
+          <p>
+            수도권 지하철 이용에서 이용자가 체감하는 핵심 불편 요소 중 하나는 <strong>"앉을 수 있는가"</strong>입니다.
+            그러나 대부분의 지하철 정보 서비스는 혼잡도, 빠른 하차, 환승 효율 등
+            <em>이동 이후의 편의성</em>에 초점을 맞추고 있으며,
+            이동 중 착석 경험 자체는 직접 고려하지 않습니다.
+          </p>
+          <blockquote>
+            "같은 열차를 탄다는 전제하에,<br>어느 차량(칸)에 탑승해야 이동 중 착석 효용이 최대화되는가?"
+          </blockquote>
+          <p>
+            이것은 상태(state)를 예측하는 문제가 아니라,
+            출발 시점에서의 <strong>선택을 비교하는 의사결정(decision) 문제</strong>입니다.
+          </p>
+        </section>
+
+        <section>
+          <h2>2. 예측이 아닌 의사결정</h2>
+          <p>
+            칸별 착석률이나 칸별 하차 인원에 대한 <strong>정답 데이터(ground truth)는 존재하지 않습니다.</strong>
+            따라서 전통적인 지도학습 예측 문제로 접근할 수 없습니다.
+          </p>
+          <p>
+            본 연구는 이를 <strong>점수 기반 의사결정 문제</strong>로 재정의하고,
+            관측 가능한 공공데이터(혼잡도, 역 구조, 시설물 위치)를 결합한
+            효용 함수(SeatScore)를 설계합니다.
+          </p>
+          <p>
+            머신러닝(Linear Regression, Random Forest)은 최종 목표가 아니라,
+            SeatScore 계산에 필요한 <strong>하차 규모 근사값을 안정적으로 생성</strong>하기 위한
+            보조 모듈입니다.
+          </p>
+        </section>
+
+        <section>
+          <h2>3. 데이터 소스</h2>
+          <div class="data-table">
+            <div class="data-row header">
+              <span>데이터</span><span>출처</span><span>규모</span>
+            </div>
+            <div class="data-row">
+              <span>시간대별 승하차 인원</span>
+              <span>서울 열린데이터광장</span>
+              <span>316,800건</span>
+            </div>
+            <div class="data-row">
+              <span>빠른환승 시설 정보</span>
+              <span>서울교통공사 API</span>
+              <span>450건 (2호선)</span>
+            </div>
+            <div class="data-row">
+              <span>역간 거리/소요시간</span>
+              <span>서울 열린데이터광장</span>
+              <span>52개 구간</span>
+            </div>
+            <div class="data-row">
+              <span>역 마스터 (좌표)</span>
+              <span>서울 열린데이터광장</span>
+              <span>80개 역</span>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h2>4. 왜 2호선인가?</h2>
+          <p>
+            빠른환승 API(getFstExit) 테스트 결과,
+            <strong>2호선이 450개 레코드, 50개 역, 40개 차량 구성 패턴</strong>으로
+            모든 노선 중 가장 풍부한 데이터를 보유하고 있었습니다.
+            또한 순환선이라는 특성이 출퇴근 패턴 분석에 유리합니다.
+          </p>
+        </section>
+
+        <section>
+          <h2>5. 주요 발견</h2>
+          <div class="findings-grid">
+            <div class="finding">
+              <span class="finding-car">3호차</span>
+              <span class="finding-desc">10개 시나리오 중 5개에서 1위</span>
+            </div>
+            <div class="finding">
+              <span class="finding-car">4호차</span>
+              <span class="finding-desc">10개 시나리오 중 3개에서 1위</span>
+            </div>
+            <div class="finding">
+              <span class="finding-car bad">1, 10호차</span>
+              <span class="finding-desc">양 끝 칸은 일관되게 최하위</span>
+            </div>
+          </div>
+          <p>
+            중간 칸(3~7호차)은 출구 시설이 집중되어 하차 승객이 많고,
+            자리가 빨리 비지만, 동시에 탑승 인원도 몰립니다.
+            이 트레이드오프가 SeatScore v2의 핵심 모델링 대상입니다.
+          </p>
+        </section>
+
+        <section>
+          <h2>6. 한계 및 주의사항</h2>
+          <ul class="limit-list">
+            <li><strong>의사결정 지원</strong>이지 예측이 아닙니다. 정답 기반 검증은 구조적으로 불가능합니다.</li>
+            <li>D(s) 하차량은 <strong>역 전체 평균</strong>이며 칸별 구분이 아닙니다.</li>
+            <li>w(c,s)는 실제 승객 행동이 아닌 <strong>시설 구조</strong> 기반입니다.</li>
+            <li>&beta;=0.3은 <strong>휴리스틱</strong>이며 민감도 분석을 통해 검증합니다.</li>
+            <li>점수는 <strong>상대적 효용 비교</strong>이지 절대적 착석 확률이 아닙니다.</li>
+          </ul>
+        </section>
+      </article>
+    </div>
+  </div>
+
+  <!-- ==================== 푸터 ==================== -->
+  <footer class="footer" id="main-footer">
+    <div class="footer-inner">
+      <p>Metropy &mdash; 서울 지하철 착석 효용 의사결정 모델</p>
+      <p class="footer-sub">공공데이터 기반 &middot; 2호선 &middot; SeatScore v2</p>
+    </div>
+  </footer>
+
+  <!-- ==================== 로딩 오버레이 ==================== -->
+  <div class="loading-overlay" id="loading-overlay">
+    <div>
+      <div class="spinner"></div>
+      <div class="loading-text">계산 중...</div>
+    </div>
+  </div>
+
+  <script src="/static/js/error-handler.js"></script>
+  <script src="/static/js/storage.js"></script>
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/car-viz.js"></script>
+  <script src="/static/js/touch.js"></script>
+  <script src="/static/js/favorites.js"></script>
+  <script src="/static/js/keyboard.js"></script>
+  <script src="/static/js/search.js"></script>
+  <script src="/static/js/explanation.js"></script>
+  <script src="/static/js/geolocation.js"></script>
+  <script src="/static/js/feedback.js"></script>
+  <script src="/static/js/compare.js"></script>
+  <script src="/static/js/map.js"></script>
+  <script src="/static/js/app.js"></script>
+  <script>
+    // PWA 등록
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/static/service-worker.js')
+          .then(reg => console.log('SW registered:', reg))
+          .catch(err => console.log('SW registration failed:', err));
+      });
+    }
+
+    // Chart.js 인스턴스 저장 (중복 생성 방지)
+    let carStatsChartInstance = null;
+    let hourStatsChartInstance = null;
+
+    // 통계 페이지 렌더링
+    function renderStats() {
+      const stats = storage.getStatistics();
+      const content = document.getElementById('stats-content');
+
+      if (!content) return;
+
+      const daysSince = Math.floor((new Date() - new Date(stats.firstUsed)) / (1000 * 60 * 60 * 24));
+      const avgPerDay = daysSince > 0 ? (stats.totalRecommendations / daysSince).toFixed(1) : 0;
+
+      content.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:16px;margin:20px 0">
+          <div class="stat-box">
+            <div class="stat-number">${stats.totalRecommendations}</div>
+            <div class="stat-label">총 이용 횟수</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">${daysSince}</div>
+            <div class="stat-label">이용 일수</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">${avgPerDay}</div>
+            <div class="stat-label">일평균 이용</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">${Object.keys(stats.routeCount || {}).length}</div>
+            <div class="stat-label">검색한 경로</div>
+          </div>
+        </div>
+      `;
+
+      // 칸별 통계 차트
+      renderCarStatsChart(stats);
+
+      // 시간대별 통계 (히스토리 기반)
+      renderHourStatsChart();
+
+      // 경로 랭킹
+      renderRouteRanking(stats);
+    }
+
+    function renderCarStatsChart(stats) {
+      const canvas = document.getElementById('car-stats-chart');
+      if (!canvas) return;
+
+      // 기존 차트 제거
+      if (carStatsChartInstance) {
+        carStatsChartInstance.destroy();
+      }
+
+      const carData = stats.carPreferences || {};
+      if (Object.keys(carData).length === 0) {
+        canvas.parentElement.innerHTML += '<p class="empty-state">아직 추천 데이터가 없습니다</p>';
+        return;
+      }
+
+      // 1-10호차 전체 표시
+      const labels = [];
+      const data = [];
+      for (let i = 1; i <= 10; i++) {
+        labels.push(`${i}호차`);
+        data.push(carData[i] || 0);
+      }
+
+      const ctx = canvas.getContext('2d');
+      carStatsChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: '추천 횟수',
+            data: data,
+            backgroundColor: data.map((v, i) => {
+              const max = Math.max(...data);
+              return v === max ? 'rgba(52, 211, 153, 0.8)' : 'rgba(91, 140, 255, 0.7)';
+            }),
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: 'var(--text-dim)' }, grid: { color: 'var(--border)' } },
+            y: { ticks: { color: 'var(--text-dim)' }, grid: { color: 'var(--border)' }, beginAtZero: true }
+          }
+        }
+      });
+    }
+
+    function renderHourStatsChart() {
+      const canvas = document.getElementById('hour-stats-chart');
+      if (!canvas) return;
+
+      if (hourStatsChartInstance) {
+        hourStatsChartInstance.destroy();
+      }
+
+      const history = storage.getHistory();
+      if (history.length === 0) {
+        canvas.parentElement.innerHTML += '<p class="empty-state">아직 검색 기록이 없습니다</p>';
+        return;
+      }
+
+      // 시간대별 집계
+      const hourCount = {};
+      history.forEach(h => {
+        const hour = h.hour || 8;
+        hourCount[hour] = (hourCount[hour] || 0) + 1;
+      });
+
+      // 전체 시간대 표시 (5-25시, 24=00:00, 25=01:00)
+      const labels = [];
+      const data = [];
+      for (let h = 5; h <= 25; h++) {
+        const displayHour = h >= 24 ? h - 24 : h;
+        labels.push(`${String(displayHour).padStart(2, '0')}시`);
+        data.push(hourCount[h] || 0);
+      }
+
+      const ctx = canvas.getContext('2d');
+      hourStatsChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: '검색 횟수',
+            data: data,
+            borderColor: 'rgba(91, 140, 255, 1)',
+            backgroundColor: 'rgba(91, 140, 255, 0.1)',
+            fill: true,
+            tension: 0.4,
+            pointRadius: 4,
+            pointHoverRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: 'var(--text-dim)' }, grid: { color: 'var(--border)' } },
+            y: { ticks: { color: 'var(--text-dim)' }, grid: { color: 'var(--border)' }, beginAtZero: true }
+          }
+        }
+      });
+    }
+
+    function renderRouteRanking(stats) {
+      const container = document.getElementById('route-ranking');
+      if (!container) return;
+
+      const routeCount = stats.routeCount || {};
+      const routes = Object.entries(routeCount)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5);
+
+      if (routes.length === 0) {
+        container.innerHTML = '<p class="empty-state">아직 검색 기록이 없습니다</p>';
+        return;
+      }
+
+      const maxCount = routes[0][1];
+
+      container.innerHTML = `
+        <div class="route-ranking-list">
+          ${routes.map(([route, count], i) => {
+            const rankClass = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
+            const barWidth = (count / maxCount) * 100;
+            return `
+              <div class="route-ranking-item">
+                <div class="route-rank ${rankClass}">${i + 1}</div>
+                <div class="route-info">
+                  <div class="route-name">${route}</div>
+                  <div class="route-count">${count}회 검색</div>
+                </div>
+                <div class="route-bar-container">
+                  <div class="route-bar" style="width: ${barWidth}%"></div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    // 데이터 내보내기
+    function exportUserData() {
+      const data = storage.exportData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `metropy-backup-${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showSuccess('데이터를 내보냈습니다.');
+    }
+
+    // 데이터 가져오기
+    function importUserData(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = JSON.parse(e.target.result);
+          storage.importData(data);
+          showSuccess('데이터를 가져왔습니다. 페이지를 새로고침합니다.');
+          setTimeout(() => location.reload(), 1500);
+        } catch (err) {
+          showError('올바르지 않은 파일 형식입니다.');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    // 데이터 초기화 확인
+    function confirmClearData() {
+      if (confirm('모든 데이터(즐겨찾기, 히스토리, 통계)가 삭제됩니다. 계속하시겠습니까?')) {
+        storage.clearAllData();
+        showSuccess('모든 데이터가 초기화되었습니다.');
+        setTimeout(() => location.reload(), 1500);
+      }
+    }
+
+    // 페이지 전환 시 통계 업데이트
+    const originalShowPage = window.showPage;
+    window.showPage = function(pageName) {
+      originalShowPage(pageName);
+      if (pageName === 'stats') {
+        setTimeout(() => {
+          renderStats();
+          if (window.feedbackSystem) {
+            feedbackSystem.renderFeedbackStats('feedback-stats');
+          }
+        }, 100);
+      }
+    };
+  </script>
+</body>
+</html>
