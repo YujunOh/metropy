@@ -104,31 +104,25 @@ class GeoLocationService {
   // 역 자동 선택
   async autoSelectNearestStation(stationSelectId = 'boarding') {
     try {
-      showLoading('위치 확인 중...');
+      if (typeof showLoading === 'function') showLoading();
 
       // 현재 위치 가져오기
       const position = await this.getCurrentPosition();
 
-      // 역 목록 가져오기 (window.stations가 있다고 가정)
-      const stations = window.stations || [];
+      // 역 목록 가져오기
+      const stationList = window.stations || [];
 
-      if (stations.length === 0) {
-        throw new Error('역 목록을 불러올 수 없습니다');
+      if (stationList.length === 0) {
+        throw new Error('역 목록을 불러오는 중입니다. 잠시 후 다시 시도해주세요.');
       }
 
-      // 가장 가까운 역 찾기
-      // TODO: 실제로는 stations에 좌표 데이터가 필요함
-      // 현재는 백엔드에서 역 좌표 데이터를 제공하지 않으므로,
-      // 임시로 API 호출로 가장 가까운 역을 찾는 방식 사용
-
-      // 임시: 현재 위치 표시만 (실제 좌표 매칭은 백엔드 개선 필요)
+      // 좌표 매칭으로 가장 가까운 역 찾기
       const result = await this.fetchNearestStationFromAPI(
         position.latitude,
         position.longitude
       );
 
       if (result && result.station) {
-        // 역 선택
         const select = document.getElementById(stationSelectId);
         const input = document.getElementById(`${stationSelectId}-search`);
 
@@ -138,21 +132,24 @@ class GeoLocationService {
             input.value = result.station.name_display || result.station.name;
           }
 
-          // 변경 이벤트 트리거
           const event = new Event('change', { bubbles: true });
           select.dispatchEvent(event);
 
-          showSuccess(
-            `현재 위치에서 가장 가까운 역: ${result.station.name_display || result.station.name} (약 ${result.distance.toFixed(1)}km)`
-          );
+          if (typeof showSuccess === 'function') {
+            showSuccess(
+              `📍 가장 가까운 역: ${result.station.name_display || result.station.name} (${result.distance < 1 ? (result.distance * 1000).toFixed(0) + 'm' : result.distance.toFixed(1) + 'km'})`
+            );
+          }
         }
       } else {
-        throw new Error('근처에 역을 찾을 수 없습니다');
+        throw new Error('근처에 2호선 역을 찾을 수 없습니다');
       }
     } catch (error) {
-      showError(error.message);
+      if (typeof showError === 'function') {
+        showError(error.message);
+      }
     } finally {
-      hideLoading();
+      if (typeof hideLoading === 'function') hideLoading();
     }
   }
 
@@ -189,19 +186,9 @@ class GeoLocationService {
     return result;
   }
 
-  // 하드코딩된 역 좌표 (2호선 주요 역)
-  // TODO: 백엔드에서 제공하도록 개선
+  // 2호선 전체 역 좌표 (map.js와 동기화)
   getHardcodedStationCoordinates() {
     return {
-      '강남': { lat: 37.4979, lng: 127.0276 },
-      '역삼': { lat: 37.5004, lng: 127.0364 },
-      '선릉': { lat: 37.5045, lng: 127.0493 },
-      '삼성': { lat: 37.5088, lng: 127.0633 },
-      '종합운동장': { lat: 37.5107, lng: 127.0735 },
-      '신촌': { lat: 37.5559, lng: 126.9368 },
-      '이대': { lat: 37.5566, lng: 126.9458 },
-      '아현': { lat: 37.5573, lng: 126.9567 },
-      '충정로': { lat: 37.5598, lng: 126.9637 },
       '시청': { lat: 37.5662, lng: 126.9779 },
       '을지로입구': { lat: 37.5658, lng: 126.9822 },
       '을지로3가': { lat: 37.5662, lng: 126.9914 },
@@ -219,6 +206,16 @@ class GeoLocationService {
       '잠실나루': { lat: 37.5202, lng: 127.1020 },
       '잠실': { lat: 37.5133, lng: 127.1000 },
       '잠실새내': { lat: 37.5112, lng: 127.0860 },
+      '종합운동장': { lat: 37.5107, lng: 127.0735 },
+      '삼성': { lat: 37.5088, lng: 127.0633 },
+      '선릉': { lat: 37.5045, lng: 127.0493 },
+      '역삼': { lat: 37.5004, lng: 127.0364 },
+      '강남': { lat: 37.4979, lng: 127.0276 },
+      '교대': { lat: 37.4934, lng: 127.0145 },
+      '서초': { lat: 37.4916, lng: 127.0078 },
+      '방배': { lat: 37.4814, lng: 126.9976 },
+      '사당': { lat: 37.4766, lng: 126.9816 },
+      '낙성대': { lat: 37.4768, lng: 126.9636 },
       '서울대입구': { lat: 37.4814, lng: 126.9527 },
       '봉천': { lat: 37.4821, lng: 126.9426 },
       '신림': { lat: 37.4842, lng: 126.9296 },
@@ -230,7 +227,11 @@ class GeoLocationService {
       '영등포구청': { lat: 37.5244, lng: 126.8960 },
       '당산': { lat: 37.5345, lng: 126.9025 },
       '합정': { lat: 37.5494, lng: 126.9139 },
-      '홍대입구': { lat: 37.5571, lng: 126.9245 }
+      '홍대입구': { lat: 37.5571, lng: 126.9245 },
+      '신촌': { lat: 37.5559, lng: 126.9368 },
+      '이대': { lat: 37.5566, lng: 126.9458 },
+      '아현': { lat: 37.5573, lng: 126.9567 },
+      '충정로': { lat: 37.5598, lng: 126.9637 }
     };
   }
 
@@ -311,9 +312,10 @@ document.addEventListener('DOMContentLoaded', () => {
   if (geoService.isAvailable()) {
     // 출발역에만 GPS 버튼 추가 (도착역은 사용자가 직접 선택)
     setTimeout(() => {
-      const boardingGroup = document.querySelector('.input-group:first-child');
-      if (boardingGroup) {
-        const wrapper = boardingGroup.querySelector('.select-wrapper');
+      // boarding-search input의 부모 select-wrapper를 직접 찾기
+      const boardingInput = document.getElementById('boarding-search');
+      if (boardingInput) {
+        const wrapper = boardingInput.closest('.select-wrapper');
         if (wrapper && !wrapper.querySelector('.gps-btn')) {
           const btn = document.createElement('button');
           btn.className = 'gps-btn';

@@ -285,7 +285,10 @@ class AutocompleteUI {
 // 초기화
 document.addEventListener('DOMContentLoaded', () => {
   // 역 데이터가 로드되면 자동완성 초기화
+  let attempts = 0;
+  const maxAttempts = 100; // 10초 후 포기
   const checkStations = setInterval(() => {
+    attempts++;
     if (window.stations && window.stations.length > 0) {
       clearInterval(checkStations);
 
@@ -294,6 +297,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // 도착역 자동완성
       new AutocompleteUI('destination-search', 'destination', window.stations);
+    } else if (attempts >= maxAttempts) {
+      clearInterval(checkStations);
+      console.warn('역 데이터 로드 타임아웃 - 자동완성을 초기화할 수 없습니다');
     }
   }, 100);
 });

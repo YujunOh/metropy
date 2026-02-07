@@ -58,35 +58,52 @@ const MetroMap = (function() {
 
   // 지도 초기화
   function init(containerId) {
-    if (typeof kakao === 'undefined' || !kakao.maps) {
-      console.error('Kakao Maps SDK가 로드되지 않았습니다.');
-      return false;
-    }
-
     const container = document.getElementById(containerId);
     if (!container) {
       console.error(`Map container '${containerId}' not found`);
       return false;
     }
 
-    // 서울 중심 좌표
-    const center = new kakao.maps.LatLng(37.5326, 127.0246);
+    if (typeof kakao === 'undefined' || !kakao.maps) {
+      console.warn('Kakao Maps SDK가 로드되지 않았습니다. 지도 기능을 사용할 수 없습니다.');
+      container.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-dim);flex-direction:column;gap:12px;padding:24px;text-align:center">
+          <span style="font-size:32px">🗺️</span>
+          <p style="margin:0;font-size:14px">지도를 불러올 수 없습니다.</p>
+          <p style="margin:0;font-size:12px;opacity:0.7">Kakao Maps SDK 로드에 실패했습니다.<br>네트워크 연결 또는 API 키를 확인해주세요.</p>
+        </div>`;
+      return false;
+    }
 
-    map = new kakao.maps.Map(container, {
-      center: center,
-      level: 8 // 줌 레벨 (작을수록 확대)
-    });
+    try {
+      // 서울 중심 좌표
+      const center = new kakao.maps.LatLng(37.5326, 127.0246);
 
-    // 지도 컨트롤 추가
-    const zoomControl = new kakao.maps.ZoomControl();
-    map.addControl(zoomControl, kakao.maps.ControlPosition.RIGHT);
+      map = new kakao.maps.Map(container, {
+        center: center,
+        level: 8
+      });
 
-    isInitialized = true;
+      // 지도 컨트롤 추가
+      const zoomControl = new kakao.maps.ZoomControl();
+      map.addControl(zoomControl, kakao.maps.ControlPosition.RIGHT);
 
-    // 전체 노선 그리기
-    drawFullLine();
+      isInitialized = true;
 
-    return true;
+      // 전체 노선 그리기
+      drawFullLine();
+
+      return true;
+    } catch (e) {
+      console.error('지도 초기화 실패:', e);
+      container.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-dim);flex-direction:column;gap:12px;padding:24px;text-align:center">
+          <span style="font-size:32px">⚠️</span>
+          <p style="margin:0;font-size:14px">지도 초기화에 실패했습니다.</p>
+          <p style="margin:0;font-size:12px;opacity:0.7">${e.message}</p>
+        </div>`;
+      return false;
+    }
   }
 
   // 전체 2호선 노선 그리기
