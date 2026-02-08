@@ -7,8 +7,7 @@ function scoreToColor(score, min, max) {
 }
 
 function scoreToTextColor(score, min, max) {
-  const ratio = max === min ? 0.5 : (score - min) / (max - min);
-  return ratio > 0.5 ? '#fff' : '#fff';
+  return '#fff';
 }
 
 function renderTrain(carScores, containerId = 'train-viz') {
@@ -41,9 +40,8 @@ function renderTrain(carScores, containerId = 'train-viz') {
       <div class="car-rank">${car.rank}위</div>
     `;
 
-    // 클릭 시 상세 정보 (새로운 설명 UI 사용)
+    // 클릭 시 상세 정보
     el.addEventListener('click', () => {
-      // 전역 routeData가 있으면 함께 전달
       const routeData = window.lastRecommendationData || {};
       showCarExplanation(car, routeData);
     });
@@ -51,45 +49,6 @@ function renderTrain(carScores, containerId = 'train-viz') {
   });
 
   container.appendChild(train);
-}
-
-// 레거시 호환성 유지 (기존 showCarDetail 함수)
-function showCarDetail(car) {
-  const detail = document.getElementById('car-detail');
-  if (!detail) return;
-  detail.innerHTML = `
-    <h3>${car.car}호차 상세</h3>
-    <div class="detail-row">
-      <span class="detail-label">점수</span>
-      <span class="detail-value">${car.score.toFixed(1)}</span>
-    </div>
-    <div class="detail-row">
-      <span class="detail-label">순위</span>
-      <span class="detail-value">${car.rank}위</span>
-    </div>
-    <div class="detail-row">
-      <span class="detail-label">Benefit (착석 기회)</span>
-      <span class="detail-value benefit">${car.benefit.toFixed(1)}</span>
-    </div>
-    <div class="detail-row">
-      <span class="detail-label">Penalty (탑승 혼잡)</span>
-      <span class="detail-value penalty">${car.penalty.toFixed(1)}</span>
-    </div>
-    <div class="detail-bar">
-      <div class="bar-benefit" style="width:${barWidth(car.benefit, car.benefit + car.penalty)}%"></div>
-      <div class="bar-penalty" style="width:${barWidth(car.penalty, car.benefit + car.penalty)}%"></div>
-    </div>
-    <div class="bar-labels">
-      <span class="benefit">Benefit</span>
-      <span class="penalty">Penalty</span>
-    </div>
-  `;
-  detail.classList.add('visible');
-}
-
-function barWidth(value, total) {
-  if (total === 0) return 50;
-  return (value / total) * 100;
 }
 
 // Chart.js 인스턴스 저장
@@ -102,20 +61,33 @@ function renderBenefitPenaltyChart(carScores, containerId = 'bp-chart') {
 
   const sorted = [...carScores].sort((a, b) => a.car - b.car);
 
-  // Chart.js 사용
+  // 정규화: Benefit과 Penalty를 각각 0-100%로 표시
+  const maxBenefit = Math.max(...sorted.map(c => c.benefit));
+  const maxPenalty = Math.max(...sorted.map(c => c.penalty));
+
+  const normBenefits = sorted.map(c => maxBenefit > 0 ? (c.benefit / maxBenefit) * 100 : 0);
+  const normPenalties = sorted.map(c => maxPenalty > 0 ? (c.penalty / maxPenalty) * 100 : 0);
+
   container.innerHTML = `
     <h2 class="card-title">Benefit vs Penalty 분석</h2>
-    <p class="card-desc">각 칸의 착석 기회(Benefit)와 탑승 혼잡(Penalty)을 비교합니다</p>
+    <p class="card-desc">착석 기회(Benefit)와 탑승 혼잡(Penalty)을 정규화하여 비교합니다. 100%는 각 항목의 최대값입니다.</p>
     <canvas id="bp-canvas" style="max-height: 400px;"></canvas>
   `;
 
   const canvas = document.getElementById('bp-canvas');
   const ctx = canvas.getContext('2d');
 
-  // 기존 차트가 있으면 제거
   if (bpChartInstance) {
     bpChartInstance.destroy();
   }
+
+  // 테마 감지
+  const isDark = !document.documentElement.getAttribute('data-theme') || document.documentElement.getAttribute('data-theme') === 'dark';
+  const textColor = isDark ? '#7c829e' : '#5a6070';
+  const gridColor = isDark ? '#2a3050' : '#d1d5dc';
+  const tooltipBg = isDark ? 'rgba(21, 25, 41, 0.95)' : 'rgba(255, 255, 255, 0.95)';
+  const tooltipText = isDark ? '#e8eaf0' : '#1a1d26';
+  const tooltipBorder = isDark ? '#2a3050' : '#d1d5dc';
 
   bpChartInstance = new Chart(ctx, {
     type: 'bar',
@@ -124,17 +96,19 @@ function renderBenefitPenaltyChart(carScores, containerId = 'bp-chart') {
       datasets: [
         {
           label: 'Benefit (착석 기회)',
-          data: sorted.map(c => c.benefit),
+          data: normBenefits,
           backgroundColor: 'rgba(52, 211, 153, 0.8)',
           borderColor: 'rgba(52, 211, 153, 1)',
-          borderWidth: 1
+          borderWidth: 1,
+          borderRadius: 4
         },
         {
           label: 'Penalty (탑승 혼잡)',
-          data: sorted.map(c => c.penalty),
+          data: normPenalties,
           backgroundColor: 'rgba(248, 113, 113, 0.8)',
           borderColor: 'rgba(248, 113, 113, 1)',
-          borderWidth: 1
+          borderWidth: 1,
+          borderRadius: 4
         }
       ]
     },
@@ -144,28 +118,46 @@ function renderBenefitPenaltyChart(carScores, containerId = 'bp-chart') {
       plugins: {
         legend: {
           labels: {
-            color: '#e8eaf0',
+            color: textColor,
             font: { size: 12, family: "'Noto Sans KR', sans-serif" }
           }
         },
         tooltip: {
-          backgroundColor: 'rgba(21, 25, 41, 0.95)',
-          titleColor: '#e8eaf0',
-          bodyColor: '#e8eaf0',
-          borderColor: '#2a3050',
+          backgroundColor: tooltipBg,
+          titleColor: tooltipText,
+          bodyColor: tooltipText,
+          borderColor: tooltipBorder,
           borderWidth: 1,
           padding: 12,
-          displayColors: true
+          displayColors: true,
+          callbacks: {
+            label: (context) => {
+              const car = sorted[context.dataIndex];
+              const datasetLabel = context.dataset.label;
+              const normVal = context.parsed.y.toFixed(1);
+              if (datasetLabel.includes('Benefit')) {
+                return `Benefit: ${normVal}% (원본: ${car.benefit.toFixed(1)})`;
+              } else {
+                return `Penalty: ${normVal}% (원본: ${car.penalty.toFixed(1)})`;
+              }
+            }
+          }
         }
       },
       scales: {
         x: {
-          ticks: { color: '#7c829e', font: { size: 11 } },
-          grid: { color: '#2a3050', drawBorder: false }
+          ticks: { color: textColor, font: { size: 11 } },
+          grid: { color: gridColor, drawBorder: false }
         },
         y: {
-          ticks: { color: '#7c829e', font: { size: 11 } },
-          grid: { color: '#2a3050', drawBorder: false }
+          ticks: {
+            color: textColor,
+            font: { size: 11 },
+            callback: (value) => value + '%'
+          },
+          grid: { color: gridColor, drawBorder: false },
+          max: 105,
+          beginAtZero: true
         }
       }
     }
@@ -191,6 +183,13 @@ function renderScoreDistributionChart(carScores, containerId = 'score-chart') {
     scoreChartInstance.destroy();
   }
 
+  const isDark = !document.documentElement.getAttribute('data-theme') || document.documentElement.getAttribute('data-theme') === 'dark';
+  const textColor = isDark ? '#7c829e' : '#5a6070';
+  const gridColor = isDark ? '#2a3050' : '#d1d5dc';
+  const tooltipBg = isDark ? 'rgba(21, 25, 41, 0.95)' : 'rgba(255, 255, 255, 0.95)';
+  const tooltipText = isDark ? '#e8eaf0' : '#1a1d26';
+  const tooltipBorder = isDark ? '#2a3050' : '#d1d5dc';
+
   scoreChartInstance = new Chart(ctx, {
     type: 'bar',
     data: {
@@ -208,7 +207,8 @@ function renderScoreDistributionChart(carScores, containerId = 'score-chart') {
           if (i === sorted.length - 1) return 'rgba(248, 113, 113, 1)';
           return 'rgba(91, 140, 255, 1)';
         }),
-        borderWidth: 2
+        borderWidth: 2,
+        borderRadius: 4
       }]
     },
     options: {
@@ -217,10 +217,10 @@ function renderScoreDistributionChart(carScores, containerId = 'score-chart') {
       plugins: {
         legend: { display: false },
         tooltip: {
-          backgroundColor: 'rgba(21, 25, 41, 0.95)',
-          titleColor: '#e8eaf0',
-          bodyColor: '#e8eaf0',
-          borderColor: '#2a3050',
+          backgroundColor: tooltipBg,
+          titleColor: tooltipText,
+          bodyColor: tooltipText,
+          borderColor: tooltipBorder,
           borderWidth: 1,
           padding: 12,
           callbacks: {
@@ -238,12 +238,12 @@ function renderScoreDistributionChart(carScores, containerId = 'score-chart') {
       },
       scales: {
         x: {
-          ticks: { color: '#7c829e', font: { size: 11 } },
-          grid: { color: '#2a3050', drawBorder: false }
+          ticks: { color: textColor, font: { size: 11 } },
+          grid: { color: gridColor, drawBorder: false }
         },
         y: {
-          ticks: { color: '#7c829e', font: { size: 11 } },
-          grid: { color: '#2a3050', drawBorder: false },
+          ticks: { color: textColor, font: { size: 11 } },
+          grid: { color: gridColor, drawBorder: false },
           beginAtZero: false
         }
       }

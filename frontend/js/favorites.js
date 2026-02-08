@@ -45,7 +45,7 @@ function updateQuickAccess() {
       </div>
     `).join('');
   } else {
-    favList.innerHTML = '<p style="color:var(--text-dim);font-size:.85rem">즐겨찾기가 없습니다</p>';
+    favList.innerHTML = '<p class="empty-state">즐겨찾기가 없습니다</p>';
   }
 
   // 히스토리 렌더링
@@ -58,7 +58,7 @@ function updateQuickAccess() {
       </div>
     `).join('');
   } else {
-    histList.innerHTML = '<p style="color:var(--text-dim);font-size:.85rem">검색 기록이 없습니다</p>';
+    histList.innerHTML = '<p class="empty-state">검색 기록이 없습니다</p>';
   }
 
   // 즐겨찾기 버튼 업데이트

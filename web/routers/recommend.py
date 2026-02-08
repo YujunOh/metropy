@@ -69,5 +69,6 @@ async def recommend(req: RecommendRequest):
         boarding_congestion=round(result["boarding_congestion"], 1) if result.get("boarding_congestion") else None,
         load_factors=load_factors_serialized,
         data_sources=result.get("data_sources", []),
+        data_quality=result.get("data_quality"),
         station_contributions=contribs_serialized,
     )

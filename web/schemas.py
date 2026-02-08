@@ -47,6 +47,7 @@ class RecommendResponse(BaseModel):
     boarding_congestion: Optional[float] = None
     load_factors: Optional[Dict[str, float]] = None  # {car_no: L(c)}
     data_sources: List[str] = []
+    data_quality: Optional[Dict[str, str]] = None  # {source: "exact"|"interpolated"|"fallback"}
     station_contributions: Optional[Dict[str, List[StationContribution]]] = None
 
 

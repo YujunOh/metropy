@@ -33,10 +33,11 @@ function showPage(pageName) {
   // 스크롤 맨 위로
   window.scrollTo(0, 0);
 
-  // 푸터: 랜딩에서만 표시
+  // 푸터: 모든 정보 페이지에서 표시
   const footer = document.getElementById('main-footer');
   if (footer) {
-    footer.style.display = pageName === 'landing' || pageName === 'about' ? '' : 'none';
+    const showFooter = ['landing', 'about', 'calibrate', 'stats'];
+    footer.style.display = showFooter.includes(pageName) ? '' : 'none';
   }
 }
 
@@ -171,6 +172,7 @@ function setupEventListeners() {
     chip.addEventListener('click', () => {
       document.querySelectorAll('.dow-chip').forEach(c => c.classList.remove('active'));
       chip.classList.add('active');
+      updateWeekendLastTrain();
     });
   });
 }
@@ -249,6 +251,25 @@ function getTimePeriod(hour) {
   if (hour >= 22) return '심야';
   if (hour < 6) return '첫차';
   return '새벽';
+}
+
+// ==================== 주말 막차 ====================
+
+function updateWeekendLastTrain() {
+  const dow = getSelectedDow();
+  const isWeekend = dow === 'SAT' || dow === 'SUN';
+  const slider = document.getElementById('hour-slider');
+  const rangeInfo = document.getElementById('hour-range-info');
+
+  if (isWeekend) {
+    slider.max = 24; // 주말 막차 24:00 (00:00)
+    if (parseInt(slider.value) > 24) slider.value = 24;
+    if (rangeInfo) rangeInfo.textContent = '첫차 05:30 ~ 막차 24:00 (주말)';
+  } else {
+    slider.max = 25;
+    if (rangeInfo) rangeInfo.textContent = '첫차 05:00 ~ 막차 24:30';
+  }
+  updateHourLabel();
 }
 
 // ==================== 추천 ====================
@@ -423,7 +444,8 @@ function displayResult(result) {
     </div>
     <div class="meta-item">
       <span class="meta-label">방향</span>
-      <span class="meta-value">${result.direction} (경유 ${result.n_intermediate}개역)</span>
+      <span class="meta-value">${result.direction}</span>
+      <span class="meta-sub">경유 ${result.n_intermediate}개역</span>
     </div>
     <div class="meta-item">
       <span class="meta-label">요일</span>
@@ -442,6 +464,56 @@ function displayResult(result) {
       <span class="meta-value">${result.score_spread}점</span>
     </div>
   `;
+
+  // 데이터 품질 배지
+  if (result.data_quality) {
+    const dqContainer = document.createElement('div');
+    dqContainer.className = 'data-quality-badges';
+    const labels = {
+      getoff_rate: '칸별 하차율',
+      car_congestion: '칸별 혼잡도',
+      train_congestion: '열차 혼잡도',
+      congestion_30min: '30분 혼잡도',
+      travel_times: '이동 시간',
+    };
+    const statusIcons = { exact: '●', interpolated: '◐', fallback: '○' };
+    const statusLabels = { exact: '실측', interpolated: '보간', fallback: '추정' };
+    const statusClasses = { exact: 'dq-exact', interpolated: 'dq-interpolated', fallback: 'dq-fallback' };
+
+    let badgesHtml = '';
+    for (const [key, label] of Object.entries(labels)) {
+      const status = result.data_quality[key] || 'fallback';
+      badgesHtml += `<span class="dq-badge ${statusClasses[status]}" title="${label}: ${statusLabels[status]} 데이터">${statusIcons[status]} ${label}</span>`;
+    }
+    dqContainer.innerHTML = badgesHtml;
+    document.getElementById('result-meta').after(dqContainer);
+  }
+
+  // L(c) 경쟁계수 시각화
+  if (result.load_factors) {
+    const lfContainer = document.createElement('div');
+    lfContainer.className = 'load-factor-viz';
+    lfContainer.innerHTML = `
+      <div class="lf-header">
+        <span class="lf-title">L(c) 탑승 경쟁 계수</span>
+        <span class="lf-legend"><span class="lf-low">○ 여유</span><span class="lf-high">● 혼잡</span></span>
+      </div>
+      <div class="lf-bars">
+        ${result.car_scores.map(cs => {
+          const lf = parseFloat(result.load_factors[cs.car] || 1.0);
+          const pct = Math.min(100, Math.max(0, (lf - 0.8) / 0.4 * 100));
+          const cls = lf < 0.95 ? 'lf-low' : lf > 1.05 ? 'lf-high' : 'lf-mid';
+          return `<div class="lf-bar-item">
+            <span class="lf-car">${cs.car}</span>
+            <div class="lf-bar-track"><div class="lf-bar-fill ${cls}" style="width:${pct}%"></div></div>
+            <span class="lf-val">${lf.toFixed(2)}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    `;
+    const metaEl = document.getElementById('result-meta');
+    metaEl.parentElement.appendChild(lfContainer);
+  }
 
   // 열차 시각화
   renderTrain(result.car_scores);

@@ -495,24 +495,89 @@ class SeatScoreEngine:
             return abs(cum[idx_to] - cum[idx_from]) + 0.1
         return 1.0
 
-    def _get_car_weight(self, station, car_no, direction, hour=None):
+    def _resolve_sk_key(self, station, hour, dow=None):
+        """
+        Resolve the best available SK API cache key for (station, hour, dow).
+
+        Priority:
+        1. Exact (station, hour, dow) match
+        2. Weekday fallback: (station, hour, "MON") for weekday dow
+        3. Nearest rush hour: interpolate from closest rush-hour data
+        """
+        dow_key = dow if dow else "MON"
+        # Weekdays share similar patterns → fallback to MON
+        weekday_codes = ("MON", "TUE", "WED", "THU", "FRI")
+        if dow_key in weekday_codes:
+            dow_key = "MON"
+
+        return station, hour, dow_key
+
+    def _find_nearest_rush_data(self, cache, station, hour, dow_key):
+        """
+        When exact hour not in cache, find nearest rush hour data and interpolate.
+
+        Rush hours in cache: 7, 8, 9, 17, 18, 19
+        For non-rush hours, blend nearest rush data with distance-based decay.
+        """
+        if not cache:
+            return None
+
+        rush_hours = [7, 8, 9, 17, 18, 19]
+        # Find nearest rush hour with data
+        best_hour = None
+        best_dist = 999
+        for rh in rush_hours:
+            data = cache.get((station, rh, dow_key))
+            if data:
+                dist = abs(hour - rh)
+                if dist < best_dist:
+                    best_dist = dist
+                    best_hour = rh
+
+        if best_hour is None:
+            return None
+
+        data = cache.get((station, best_hour, dow_key))
+        if data is None:
+            return None
+
+        # Decay factor: farther from rush hour → blend toward uniform
+        # 0 hours away → 1.0 (full data), 6+ hours → 0.3 (mostly uniform)
+        decay = max(0.3, 1.0 - best_dist * 0.12)
+        return data, decay
+
+    def _get_car_weight(self, station, car_no, direction, hour=None, dow=None):
         """
         w(c,s): per-car alighting weight at station s.
 
         Priority:
-        1. SK API getOffCarRate (real measurement)
-        2. Facility-based estimation (fast exit data)
-        3. Uniform distribution (1/10)
+        1. SK API getOffCarRate (real measurement, dow-aware)
+        2. Nearest rush hour interpolation
+        3. Facility-based estimation (fast exit data)
+        4. Uniform distribution (1/10)
         """
         # Try SK API getoff rate
         if self._getoff_rate_cache and hour is not None:
-            # Try weekday first
-            rates = self._getoff_rate_cache.get((station, hour, "MON"))
+            _, h, dk = self._resolve_sk_key(station, hour, dow)
+            rates = self._getoff_rate_cache.get((station, h, dk))
             if rates and len(rates) == self.TOTAL_CARS:
                 total = sum(rates)
                 if total > 0:
                     return rates[car_no - 1] / total
                 return 1.0 / self.TOTAL_CARS
+
+            # Try nearest rush hour interpolation
+            result = self._find_nearest_rush_data(
+                self._getoff_rate_cache, station, hour, dk
+            )
+            if result:
+                data, decay = result
+                if len(data) == self.TOTAL_CARS:
+                    total = sum(data)
+                    if total > 0:
+                        uniform = 1.0 / self.TOTAL_CARS
+                        real_w = data[car_no - 1] / total
+                        return decay * real_w + (1 - decay) * uniform
 
         # Fallback to facility-based weight
         return self._get_facility_score(station, car_no, direction)
@@ -533,27 +598,88 @@ class SeatScoreEngine:
 
         return car_score / total_score
 
-    def _get_boarding_penalty(self, car_no, boarding_station, hour, direction):
+    def _get_boarding_penalty(self, car_no, boarding_station, hour, direction, dow=None):
         """
         B(c,h): boarding congestion penalty per car.
 
         Priority:
-        1. SK API congestionCar (real per-car congestion)
-        2. Facility-based estimation
+        1. SK API congestionCar (real per-car congestion, dow-aware)
+        2. Nearest rush hour interpolation
+        3. Facility-based estimation
+
+        When train_congestion data is available, it scales the penalty
+        by the actual train-level crowding (higher train congestion → bigger penalty).
         """
+        base_penalty = None
+
         # Try SK API car congestion
         if self._car_congestion_cache and hour is not None:
-            congestion = self._car_congestion_cache.get((boarding_station, hour, "MON"))
+            _, h, dk = self._resolve_sk_key(boarding_station, hour, dow)
+            congestion = self._car_congestion_cache.get((boarding_station, h, dk))
             if congestion and len(congestion) == self.TOTAL_CARS:
                 total = sum(congestion)
                 if total > 0:
-                    return congestion[car_no - 1] / total
-                return 1.0 / self.TOTAL_CARS
+                    base_penalty = congestion[car_no - 1] / total
 
-        # Fallback to facility-based penalty
-        return self._get_facility_score(boarding_station, car_no, direction)
+            # Try nearest rush hour interpolation
+            if base_penalty is None:
+                result = self._find_nearest_rush_data(
+                    self._car_congestion_cache, boarding_station, hour, dk
+                )
+                if result:
+                    data, decay = result
+                    if len(data) == self.TOTAL_CARS:
+                        total = sum(data)
+                        if total > 0:
+                            uniform = 1.0 / self.TOTAL_CARS
+                            real_p = data[car_no - 1] / total
+                            base_penalty = decay * real_p + (1 - decay) * uniform
 
-    def _get_load_factors(self, intermediates, direction, hour):
+        if base_penalty is None:
+            base_penalty = self._get_facility_score(boarding_station, car_no, direction)
+
+        # Scale by train-level congestion if available
+        train_scale = self._get_train_congestion_scale(boarding_station, hour, dow)
+        return base_penalty * train_scale
+
+    def _get_train_congestion_scale(self, station, hour, dow=None):
+        """
+        Use train-level congestion to scale penalties/factors.
+
+        Returns a multiplier around 1.0:
+        - train congestion > average → scale > 1.0 (more crowded)
+        - train congestion < average → scale < 1.0 (less crowded)
+        - no data → 1.0 (neutral)
+
+        Average train congestion across all cached data is ~50 (typical %),
+        so we normalize relative to that baseline.
+        """
+        if not self._train_congestion_cache:
+            return 1.0
+
+        _, h, dk = self._resolve_sk_key(station, hour, dow)
+        tc = self._train_congestion_cache.get((station, h, dk))
+
+        # Try nearest rush hour if exact not found
+        if tc is None:
+            result = self._find_nearest_rush_data(
+                self._train_congestion_cache, station, hour, dk
+            )
+            if result:
+                tc, decay = result
+                # For scalar values, blend toward baseline (50)
+                tc = decay * tc + (1 - decay) * 50.0
+
+        if tc is None:
+            return 1.0
+
+        # Normalize: 50% is baseline → scale=1.0, 70% → 1.4, 30% → 0.6
+        baseline = 50.0
+        scale = tc / baseline if baseline > 0 else 1.0
+        # Clamp to reasonable range [0.5, 2.0]
+        return max(0.5, min(2.0, scale))
+
+    def _get_load_factors(self, intermediates, direction, hour, dow=None):
         """
         L(c): per-car relative load factor (competition coefficient).
 
@@ -565,22 +691,36 @@ class SeatScoreEngine:
         then dampened via GAMMA: L_eff = L^GAMMA (in compute_seatscore).
 
         Priority:
-        1. SK API congestionCar (real per-car crowding measurement)
+        1. SK API congestionCar (real per-car crowding, dow-aware + rush interpolation)
         2. Average w(c,s) across intermediate stations (facility-based proxy)
         3. Uniform (1.0 for all cars)
         """
         L_MIN, L_MAX = 0.3, 3.0
         loads = [0.0] * self.TOTAL_CARS
+        _, _, dk = self._resolve_sk_key("", hour, dow)
 
         # Try SK API car congestion: average across intermediate stations
         if self._car_congestion_cache and hour is not None:
             sk_count = 0
             for s in intermediates:
-                congestion = self._car_congestion_cache.get((s, hour, "MON"))
+                congestion = self._car_congestion_cache.get((s, hour, dk))
                 if congestion and len(congestion) == self.TOTAL_CARS:
                     for i in range(self.TOTAL_CARS):
                         loads[i] += congestion[i]
                     sk_count += 1
+                else:
+                    # Try nearest rush hour interpolation
+                    result = self._find_nearest_rush_data(
+                        self._car_congestion_cache, s, hour, dk
+                    )
+                    if result:
+                        data, decay = result
+                        if len(data) == self.TOTAL_CARS:
+                            uniform_val = sum(data) / self.TOTAL_CARS
+                            for i in range(self.TOTAL_CARS):
+                                loads[i] += decay * data[i] + (1 - decay) * uniform_val
+                            sk_count += 1
+
             if sk_count > 0:
                 loads = [v / sk_count for v in loads]
                 mean_load = sum(loads) / self.TOTAL_CARS
@@ -591,7 +731,7 @@ class SeatScoreEngine:
         if intermediates:
             for s in intermediates:
                 for c in range(self.TOTAL_CARS):
-                    loads[c] += self._get_car_weight(s, c + 1, direction, hour)
+                    loads[c] += self._get_car_weight(s, c + 1, direction, hour, dow)
 
             mean_load = sum(loads) / self.TOTAL_CARS
             if mean_load > 0:
@@ -621,7 +761,7 @@ class SeatScoreEngine:
             alpha = round(alpha * 0.85, 2)
 
         # competition factor: relative per-car crowding
-        load_factors_raw = self._get_load_factors(intermediates, direction, hour)
+        load_factors_raw = self._get_load_factors(intermediates, direction, hour, dow)
         # Apply GAMMA dampening: L_eff = L^GAMMA
         # GAMMA=0 → no effect, GAMMA=1 → full effect, GAMMA=0.5 → sqrt dampening
         load_factors = [L ** self.GAMMA for L in load_factors_raw]
@@ -637,7 +777,7 @@ class SeatScoreEngine:
             for s in intermediates:
                 D = self._get_alighting_volume(s, hour, direction, dow)
                 T = self._get_travel_time(s, destination, direction)
-                w = self._get_car_weight(s, c, direction, hour)
+                w = self._get_car_weight(s, c, direction, hour, dow)
                 contrib = D * T * w * alpha / L if L > 0 else 0.0
                 benefit += contrib
                 contributions.append({
@@ -653,13 +793,13 @@ class SeatScoreEngine:
 
         # boarding penalty scaled by average alighting volume
         avg_D = np.mean([
-            self._get_alighting_volume(s, hour, direction)
+            self._get_alighting_volume(s, hour, direction, dow)
             for s in intermediates
         ]) if intermediates else 1.0
 
         boarding_penalty = {}
         for c in range(1, self.TOTAL_CARS + 1):
-            B = self._get_boarding_penalty(c, boarding, hour, direction)
+            B = self._get_boarding_penalty(c, boarding, hour, direction, dow)
             boarding_penalty[c] = self.BETA * B * avg_D * len(intermediates)
 
         # final score = benefit - penalty
@@ -732,6 +872,48 @@ class SeatScoreEngine:
             for _, row in scores_df.iterrows()
         }
 
+        # Build per-query data quality report
+        _, _, dk = self._resolve_sk_key(boarding, hour, dow)
+        data_quality = {}
+        # Check if SK API data was used for this specific query
+        if self._getoff_rate_cache:
+            has_exact = any(
+                self._getoff_rate_cache.get((s, hour, dk)) is not None
+                for s in intermediates
+            )
+            has_interp = not has_exact and any(
+                self._find_nearest_rush_data(self._getoff_rate_cache, s, hour, dk)
+                for s in intermediates
+            )
+            data_quality["getoff_rate"] = "exact" if has_exact else ("interpolated" if has_interp else "fallback")
+        else:
+            data_quality["getoff_rate"] = "fallback"
+
+        if self._car_congestion_cache:
+            has_exact = any(
+                self._car_congestion_cache.get((s, hour, dk)) is not None
+                for s in intermediates
+            )
+            has_interp = not has_exact and any(
+                self._find_nearest_rush_data(self._car_congestion_cache, s, hour, dk)
+                for s in intermediates
+            )
+            data_quality["car_congestion"] = "exact" if has_exact else ("interpolated" if has_interp else "fallback")
+        else:
+            data_quality["car_congestion"] = "fallback"
+
+        if self._train_congestion_cache:
+            tc = self._train_congestion_cache.get((boarding, hour, dk))
+            has_interp = tc is None and self._find_nearest_rush_data(
+                self._train_congestion_cache, boarding, hour, dk
+            )
+            data_quality["train_congestion"] = "exact" if tc is not None else ("interpolated" if has_interp else "fallback")
+        else:
+            data_quality["train_congestion"] = "fallback"
+
+        data_quality["congestion_30min"] = "exact" if boarding_congestion is not None else "fallback"
+        data_quality["travel_times"] = "exact" if self._tt_stations else "fallback"
+
         return {
             "boarding": boarding,
             "destination": destination,
@@ -750,6 +932,7 @@ class SeatScoreEngine:
             "boarding_congestion": boarding_congestion,
             "load_factors": load_factors_map,
             "data_sources": list(self.data_sources.keys()),
+            "data_quality": data_quality,
         }
 
 

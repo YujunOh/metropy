@@ -46,6 +46,11 @@ class SmartSearch {
     return 1.0 - (distance / maxLen);
   }
 
+  // 입력이 전부 초성인지 확인
+  isAllChosung(text) {
+    return text.split('').every(char => this.CHO.includes(char));
+  }
+
   // 스마트 검색
   search(stations, query) {
     if (!query || query.trim() === '') {
@@ -54,6 +59,7 @@ class SmartSearch {
 
     const q = query.trim().toLowerCase();
     const qChosung = this.getChosung(q);
+    const isChosungQuery = this.isAllChosung(q);
     const results = [];
 
     stations.forEach(station => {
@@ -74,9 +80,23 @@ class SmartSearch {
         score = 90;
         matchType = 'prefix';
       }
-      // 3. 초성 일치
-      else if (chosung.includes(qChosung)) {
-        score = 80;
+      // 3. 초성 검색 (세분화된 점수)
+      else if (isChosungQuery && chosung.startsWith(qChosung)) {
+        // 초성 prefix 일치 - 더 높은 점수
+        // 짧은 이름일수록 더 관련성 높음 (ㄱㄴ → 강남 > 강남구청)
+        const lengthBonus = Math.max(0, 10 - station.name.length);
+        score = 88 + lengthBonus * 0.5;
+        matchType = 'chosung-prefix';
+      }
+      else if (isChosungQuery && chosung.includes(qChosung)) {
+        // 초성 부분 일치 - 약간 낮은 점수
+        const matchPos = chosung.indexOf(qChosung);
+        score = 78 - matchPos * 2; // 뒤에서 매치될수록 낮은 점수
+        matchType = 'chosung';
+      }
+      else if (!isChosungQuery && chosung.includes(qChosung)) {
+        // 일반 텍스트의 초성 매치
+        score = 75;
         matchType = 'chosung';
       }
       // 4. 부분 일치
@@ -108,11 +128,11 @@ class SmartSearch {
     // 점수 순으로 정렬
     results.sort((a, b) => b.score - a.score);
 
-    // 최근 검색 우선순위 적용
+    // 최근 검색 우선순위 (점수 동점 시 우선)
     const recentSearches = this.getRecentSearches();
     results.forEach(result => {
       if (recentSearches.includes(result.station.name)) {
-        result.score += 5;
+        result.score += 3;
       }
     });
 
