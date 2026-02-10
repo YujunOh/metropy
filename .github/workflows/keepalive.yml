@@ -1,0 +1,14 @@
+name: Keep Render Alive
+
+on:
+  schedule:
+    # 14분마다 실행 (Render 15분 슬립 방지)
+    - cron: '*/14 * * * *'
+  workflow_dispatch: # 수동 실행 가능
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        run: curl -fsS https://metropy.onrender.com/health || true
