@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import os
-from dataclasses import replace
 from fastapi import APIRouter, HTTPException
 from api.schemas import (
     CalibrationRequest,
@@ -62,8 +61,7 @@ async def calibrate(req: CalibrationRequest):
         if req.alpha_early is not None:
             alpha_map["early"] = req.alpha_early
 
-        new_params = replace(
-            current_params,
+        new_params = type(current_params)(
             beta=beta,
             gamma=gamma,
             delta=delta,
@@ -130,9 +128,15 @@ async def sensitivity_analysis(
     with registry.engine_lock:
         original_params = engine.params
         try:
-            for beta_100 in range(0, 105, 5):  # 0.00 ~ 1.00, step 0.05
+            for beta_100 in range(0, 105, 5):
                 beta = beta_100 / 100.0
-                engine.params = replace(original_params, beta=beta)
+                engine.params = type(original_params)(
+                    beta=beta,
+                    gamma=original_params.gamma,
+                    delta=original_params.delta,
+                    facility_weights=original_params.facility_weights,
+                    alpha_map=original_params.alpha_map,
+                )
                 scores_df = engine.compute_seatscore(
                     boarding, destination, hour, direction
                 )
@@ -168,9 +172,15 @@ async def sensitivity_gamma(
     with registry.engine_lock:
         original_params = engine.params
         try:
-            for gamma_10 in range(1, 11):  # 0.1 ~ 1.0, step 0.1
+            for gamma_10 in range(1, 11):
                 gamma = gamma_10 / 10.0
-                engine.params = replace(original_params, gamma=gamma)
+                engine.params = type(original_params)(
+                    beta=original_params.beta,
+                    gamma=gamma,
+                    delta=original_params.delta,
+                    facility_weights=original_params.facility_weights,
+                    alpha_map=original_params.alpha_map,
+                )
                 scores_df = engine.compute_seatscore(
                     boarding, destination, hour, direction
                 )
@@ -206,9 +216,15 @@ async def sensitivity_delta(
     with registry.engine_lock:
         original_params = engine.params
         try:
-            for delta_100 in range(0, 55, 5):  # 0.00 ~ 0.50, step 0.05
+            for delta_100 in range(0, 55, 5):
                 delta = delta_100 / 100.0
-                engine.params = replace(original_params, delta=delta)
+                engine.params = type(original_params)(
+                    beta=original_params.beta,
+                    gamma=original_params.gamma,
+                    delta=delta,
+                    facility_weights=original_params.facility_weights,
+                    alpha_map=original_params.alpha_map,
+                )
                 scores_df = engine.compute_seatscore(
                     boarding, destination, hour, direction
                 )

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """추천 순위 안정성 분석"""
 import random
-from dataclasses import replace
+import statistics
 from typing import List
 from fastapi import APIRouter
 from api.schemas import RankStabilityResponse, RankStabilityCarResult
@@ -49,11 +49,16 @@ async def rank_stability(
             # Perturb alpha by ±20%
             factor = 1.0 + random.uniform(-0.2, 0.2)
             original_params = engine.params
-            perturbed_alpha_map = {
-                k: round(v * factor, 4)
-                for k, v in original_params.alpha_map.items()
-            }
-            engine.params = replace(original_params, alpha_map=perturbed_alpha_map)
+            perturbed_alpha_map = {}
+            for k, v in original_params.alpha_map.items():
+                perturbed_alpha_map[k] = v * factor
+            engine.params = type(original_params)(
+                beta=original_params.beta,
+                gamma=original_params.gamma,
+                delta=original_params.delta,
+                facility_weights=original_params.facility_weights,
+                alpha_map=perturbed_alpha_map,
+            )
 
             try:
                 df = engine.compute_seatscore(boarding, destination, hour, direction)
@@ -76,10 +81,7 @@ async def rank_stability(
         rank_changes = len(rank_set) - 1  # unique ranks - 1
 
         avg_s = sum(scores) / len(scores) if scores else 0.0
-        std_s = (
-            (sum((s - avg_s) ** 2 for s in scores) / len(scores)) ** 0.5
-            if scores else 0.0
-        )
+        std_s = statistics.pstdev(scores) if scores else 0.0
 
         cars.append(RankStabilityCarResult(
             car=c,

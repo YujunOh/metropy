@@ -5,7 +5,6 @@ Validation API Router
 Computes accuracy metrics by comparing SeatScore recommendations
 against user feedback data.
 """
-import logging
 import sqlite3
 from pathlib import Path
 from typing import List, Optional
@@ -40,16 +39,7 @@ def _load_feedback_from_db() -> List[dict]:
 
 
 def _compute_metrics(feedback: List[dict]) -> ValidationMetrics:
-    """
-    Compute validation metrics from feedback data.
-
-    Metrics:
-    - mean_satisfaction: average user satisfaction (1-5 scale)
-    - seat_success_rate: fraction of users who got a seat
-    - rank_correlation: Spearman correlation between seatscore rank and satisfaction
-    - top1_accuracy: fraction where recommended car matched user preference
-    - mean_score_satisfied/unsatisfied: avg seatscore for happy vs unhappy users
-    """
+    """검증 메트릭 계산"""
     if not feedback:
         return ValidationMetrics(
             total_feedback=0,
@@ -75,7 +65,6 @@ def _compute_metrics(feedback: List[dict]) -> ValidationMetrics:
 
     satisfied_scores = []  # satisfaction >= 4
     unsatisfied_scores = []  # satisfaction <= 2
-    skipped = 0
 
     for f in feedback:
         try:
@@ -102,21 +91,22 @@ def _compute_metrics(feedback: List[dict]) -> ValidationMetrics:
             actual_car = f.get("actual_car", rec_car)
             if result["best_car"] == actual_car:
                 top1_hits += 1
-
-        except Exception as e:
-            logging.warning(
-                "Validation: skipping feedback entry boarding=%s→%s hour=%d: %s",
-                f.get("boarding"), f.get("alighting"), f.get("hour", -1), e,
-            )
-            skipped += 1
+        except Exception:
             continue
 
     top1_accuracy = top1_hits / n if n > 0 else 0.0
 
     rank_corr = None
 
-    mean_score_sat = round(sum(satisfied_scores) / len(satisfied_scores), 2) if satisfied_scores else None
-    mean_score_unsat = round(sum(unsatisfied_scores) / len(unsatisfied_scores), 2) if unsatisfied_scores else None
+    if satisfied_scores:
+        mean_score_sat = round(sum(satisfied_scores) / len(satisfied_scores), 2)
+    else:
+        mean_score_sat = None
+
+    if unsatisfied_scores:
+        mean_score_unsat = round(sum(unsatisfied_scores) / len(unsatisfied_scores), 2)
+    else:
+        mean_score_unsat = None
 
     return ValidationMetrics(
         total_feedback=n,
@@ -126,7 +116,6 @@ def _compute_metrics(feedback: List[dict]) -> ValidationMetrics:
         top1_accuracy=round(top1_accuracy, 4),
         mean_score_satisfied=mean_score_sat,
         mean_score_unsatisfied=mean_score_unsat,
-        skipped_count=skipped,
     )
 
 

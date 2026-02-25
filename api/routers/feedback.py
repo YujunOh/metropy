@@ -42,10 +42,6 @@ def _init_db():
             created_at TEXT NOT NULL
         )
     """)
-    # Indexes for common query patterns (stats aggregation, time-based queries)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_feedback_boarding ON feedback(boarding)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_feedback_hour ON feedback(hour)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_feedback_created_at ON feedback(created_at)")
     conn.commit()
     conn.close()
     _db_initialized = True

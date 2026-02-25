@@ -16,26 +16,8 @@ from src.utils import normalize_station_name as _normalize_util
 
 
 class MetropyPreprocessor:
-    """
-    Main preprocessing class for Metropy transit data analysis.
-    
-    Handles:
-    - Loading Fast Exit data from JSON
-    - Transforming congestion data from wide to long format
-    - Adding cyclical time features
-    - Integrating station master data
-    - Computing interstation distances
-    - Normalizing Korean station names
-    """
-    
     def __init__(self, base_path: str = None):
-        """
-        Initialize the preprocessor.
-        
-        Args:
-            base_path: Base directory path for the project. 
-                      Defaults to parent of src/ directory.
-        """
+        """전처리기 초기화"""
         if base_path is None:
             self.base_path = Path(__file__).parent.parent
         else:
@@ -59,59 +41,31 @@ class MetropyPreprocessor:
         print(f"Raw data path: {self.data_raw_path}")
         print(f"Processed data path: {self.data_processed_path}")
     
-    @staticmethod
-    def normalize_station_name(name: str) -> str:
-        """
-        Normalize Korean station names by removing common suffixes and formatting.
-        
-        Delegates to src.utils.normalize_station_name for canonical implementation.
-        """
-        from src.utils import normalize_station_name as _normalize
-        return _normalize(name) if not pd.isna(name) else name    
-        """
-        Load Fast Exit data from JSON file.
-        
-        Expected JSON structure:
-        {
-            "station_name": {
-                "line": "line_number",
-                "fast_exits": ["exit_1", "exit_2", ...]
-            }
-        }
-        
-        Args:
-            filepath: Path to JSON file. If None, searches in data_raw/
-            
-        Returns:
-            DataFrame with columns: station, line, exit_number, is_fast_exit
-        """
+    def load_fast_exit_data(self, filepath: str = None) -> pd.DataFrame:
+        """Fast Exit 데이터 로드"""
         if filepath is None:
-            # Try common filenames
             possible_files = [
                 self.data_raw_path / "fast_exit.json",
                 self.data_raw_path / "fast_exit_data.json",
                 self.data_raw_path / "fastexit.json"
             ]
             filepath = next((f for f in possible_files if f.exists()), None)
-            
+
             if filepath is None:
                 print("Warning: Fast Exit JSON file not found. Skipping.")
                 return pd.DataFrame()
-        
+
         print(f"Loading Fast Exit data from: {filepath}")
-        
+
         with open(filepath, 'r', encoding='utf-8') as f:
             fast_exit_json = json.load(f)
-        
-        # Transform to DataFrame
+
         records = []
         for station, info in fast_exit_json.items():
             line = info.get('line', 'Unknown')
             fast_exits = info.get('fast_exits', [])
-            
-            # Normalize station name
-            normalized_station = self.normalize_station_name(station)
-            
+            normalized_station = _normalize_util(station) if not pd.isna(station) else station
+
             for exit_num in fast_exits:
                 records.append({
                     'station': normalized_station,
@@ -120,25 +74,13 @@ class MetropyPreprocessor:
                     'exit_number': exit_num,
                     'is_fast_exit': 1
                 })
-        
+
         self.fast_exit_data = pd.DataFrame(records)
         print(f"Loaded {len(self.fast_exit_data)} Fast Exit records")
-        
         return self.fast_exit_data
-    
+
     def load_congestion_data(self, filepath: str = None) -> pd.DataFrame:
-        """
-        Load and transform congestion data from wide to long format.
-        
-        Expected format: Wide format with columns like 'hour_0530', 'hour_0600', etc.
-        Transforms to long format with separate hour column.
-        
-        Args:
-            filepath: Path to CSV file. If None, searches in data_raw/
-            
-        Returns:
-            DataFrame in long format with congestion by hour
-        """
+        """혼잡도 데이터 로드"""
         if filepath is None:
             # Try common filenames
             possible_files = [
@@ -182,7 +124,7 @@ class MetropyPreprocessor:
         # Normalize station names if station column exists
         if 'station' in df_long.columns:
             df_long['station_original'] = df_long['station']
-            df_long['station'] = df_long['station'].apply(self.normalize_station_name)
+            df_long['station'] = df_long['station'].apply(_normalize_util)
         
         self.congestion_data = df_long
         print(f"Transformed to long format: {len(self.congestion_data)} records")
@@ -191,18 +133,6 @@ class MetropyPreprocessor:
     
     @staticmethod
     def add_cyclical_features(df: pd.DataFrame, hour_col: str = 'hour') -> pd.DataFrame:
-        """
-        Add cyclical sine and cosine features for hour of day.
-        
-        This ensures that 23:00 and 00:00 are treated as close together.
-        
-        Args:
-            df: DataFrame with hour column
-            hour_col: Name of hour column
-            
-        Returns:
-            DataFrame with added hour_sin and hour_cos columns
-        """
         if hour_col not in df.columns:
             print(f"Warning: Column '{hour_col}' not found. Skipping cyclical features.")
             return df
@@ -215,15 +145,7 @@ class MetropyPreprocessor:
         
         return df    
     def load_station_master(self, filepath: str = None) -> pd.DataFrame:
-        """
-        Load station master data with metadata (coordinates, line info, etc.).
-        
-        Args:
-            filepath: Path to CSV file. If None, searches in data_raw/
-            
-        Returns:
-            DataFrame with station metadata
-        """
+        """역 마스터 데이터 로드"""
         if filepath is None:
             # Try common filenames
             possible_files = [
@@ -244,10 +166,10 @@ class MetropyPreprocessor:
         # Normalize station names
         if 'station' in df.columns:
             df['station_original'] = df['station']
-            df['station'] = df['station'].apply(self.normalize_station_name)
+            df['station'] = df['station'].apply(_normalize_util)
         elif 'station_name' in df.columns:
             df['station_original'] = df['station_name']
-            df['station'] = df['station_name'].apply(self.normalize_station_name)
+            df['station'] = df['station_name'].apply(_normalize_util)
         
         self.station_master = df
         print(f"Loaded {len(self.station_master)} stations")
@@ -255,17 +177,7 @@ class MetropyPreprocessor:
         return self.station_master
     
     def load_distance_data(self, filepath: str = None) -> pd.DataFrame:
-        """
-        Load interstation distance data.
-        
-        Expected columns: station_from, station_to, distance_km, travel_time_min
-        
-        Args:
-            filepath: Path to CSV file. If None, searches in data_raw/
-            
-        Returns:
-            DataFrame with distance information
-        """
+        """역간 거리 데이터 로드"""
         if filepath is None:
             # Try common filenames
             possible_files = [
@@ -286,11 +198,11 @@ class MetropyPreprocessor:
         # Normalize station names
         if 'station_from' in df.columns:
             df['station_from_original'] = df['station_from']
-            df['station_from'] = df['station_from'].apply(self.normalize_station_name)
+            df['station_from'] = df['station_from'].apply(_normalize_util)
         
         if 'station_to' in df.columns:
             df['station_to_original'] = df['station_to']
-            df['station_to'] = df['station_to'].apply(self.normalize_station_name)
+            df['station_to'] = df['station_to'].apply(_normalize_util)
         
         self.distance_data = df
         print(f"Loaded {len(self.distance_data)} distance records")
@@ -298,18 +210,7 @@ class MetropyPreprocessor:
         return self.distance_data
     
     def create_master_dataset(self) -> pd.DataFrame:
-        """
-        Combine all data sources into a master dataset.
-        
-        Merges:
-        - Congestion data (base)
-        - Fast Exit data
-        - Station master data
-        - Distance data (if applicable)
-        
-        Returns:
-            Integrated master dataset
-        """
+        """데이터 합치기"""
         print("\n" + "="*60)
         print("Creating Master Dataset")
         print("="*60)
@@ -363,15 +264,7 @@ class MetropyPreprocessor:
         
         return self.master_dataset    
     def save_processed_data(self, prefix: str = "processed") -> Dict[str, Path]:
-        """
-        Save all processed datasets to CSV files.
-        
-        Args:
-            prefix: Prefix for output filenames
-            
-        Returns:
-            Dictionary mapping dataset name to saved filepath
-        """
+        """전처리 결과 저장"""
         print("\n" + "="*60)
         print("Saving Processed Data")
         print("="*60)
@@ -423,19 +316,7 @@ class MetropyPreprocessor:
                          station_master_path: str = None,
                          distance_path: str = None,
                          save: bool = True) -> Dict[str, pd.DataFrame]:
-        """
-        Run the complete preprocessing pipeline.
-        
-        Args:
-            fast_exit_path: Path to Fast Exit JSON file
-            congestion_path: Path to congestion CSV file
-            station_master_path: Path to station master CSV file
-            distance_path: Path to distance CSV file
-            save: Whether to save processed data to files
-            
-        Returns:
-            Dictionary of all processed datasets
-        """
+        """전체 전처리 파이프라인 실행"""
         print("\n" + "="*60)
         print("METROPY PREPROCESSING PIPELINE")
         print("="*60 + "\n")
@@ -465,9 +346,7 @@ class MetropyPreprocessor:
 
 
 def main():
-    """
-    Main execution function for standalone script usage.
-    """
+    """스크립트 실행 진입점"""
     # Initialize preprocessor
     preprocessor = MetropyPreprocessor()
     

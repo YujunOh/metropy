@@ -1,17 +1,11 @@
 # -*- coding: utf-8 -*-
-"""
-SeatScore v4 - 서울 2호선 칸별 착석 점수 계산
-
-혼잡도, 하차율, 이동시간 등 공공데이터를 조합해서
-각 칸의 착석 확률 점수를 매기는 엔진.
-"""
+"""SeatScore v4 엔진."""
 
 import json
 import logging
 import pickle
 import io
 import re
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict
 
@@ -31,25 +25,38 @@ def safe_pickle_load(filepath):
     with open(filepath, 'rb') as f:
         return pickle.load(f)
 
-@dataclass(frozen=True)
 class SeatScoreParams:
-    beta: float = 0.3
-    gamma: float = 0.5
-    delta: float = 0.15
-    facility_weights: Dict[str, float] = field(default_factory=lambda: {
-        "에스컬레이터": 1.2,
-        "엘리베이터": 0.0,
-        "계단": 1.0,
-    })
-    alpha_map: Dict[str, float] = field(default_factory=lambda: {
-        "morning_rush": 1.4,
-        "evening_rush": 1.3,
-        "midday": 1.0,
-        "evening": 0.9,
-        "night": 0.6,
-        "early": 0.5,
-    })
+    def __init__(
+        self,
+        beta: float = 0.3,
+        gamma: float = 0.5,
+        delta: float = 0.15,
+        facility_weights: Dict[str, float] = None,
+        alpha_map: Dict[str, float] = None,
+    ):
+        self.beta = beta
+        self.gamma = gamma
+        self.delta = delta
+        if facility_weights is None:
+            self.facility_weights = {
+                "에스컬레이터": 1.2,
+                "엘리베이터": 0.0,
+                "계단": 1.0,
+            }
+        else:
+            self.facility_weights = dict(facility_weights)
 
+        if alpha_map is None:
+            self.alpha_map = {
+                "morning_rush": 1.4,
+                "evening_rush": 1.3,
+                "midday": 1.0,
+                "evening": 0.9,
+                "night": 0.6,
+                "early": 0.5,
+            }
+        else:
+            self.alpha_map = dict(alpha_map)
 
 
 class SeatScoreEngine:
@@ -202,10 +209,7 @@ class SeatScoreEngine:
         print(f"  Distance: {len(df)} segments, {len(self.station_order)} stations")
 
     def _build_facility_cache(self):
-        """
-        Precompute per (station, direction, car) facility score,
-        and per (station, direction) exit count distribution.
-        """
+        """시설/출구 캐시 계산."""
         if self.fast_exit_df is None:
             return
 
@@ -289,15 +293,7 @@ class SeatScoreEngine:
             print(f"  Exit traffic: not found (using facility fallback)")
 
     def _build_dow_factors(self):
-        """
-        Build per-station day-of-week correction factors from exit traffic.
-
-        dow_factor(station, dow) = traffic(station, dow) / avg_weekday_traffic(station)
-
-        Examples:
-        - 강남 Saturday: 0.59 (much quieter on weekends)
-        - 홍대입구 Saturday: 1.29 (busier on weekends)
-        """
+        """요일 보정 계수 계산."""
         self._dow_factors = {}  # (station, dow) → float ratio
 
         # Collect per-station totals by day
@@ -322,60 +318,30 @@ class SeatScoreEngine:
 
 
     def _get_alpha(self, hour, params=None):
-        """
-        Time-of-day congestion multiplier using smooth interpolation.
-
-        Uses a continuous function instead of discrete buckets for smoother
-        transitions between time periods. Peak at 8am (morning rush) and
-        6:30pm (evening rush), with gradual decay towards night hours.
-
-        **IMPORTANT**: Anchor values are derived from self.ALPHA_MAP so that
-        user calibration (via /api/calibrate) actually affects scoring.
-        The shape of the interpolation curve is fixed; the peak/trough
-        amplitudes come from ALPHA_MAP.
-        """
-        # Read calibrated values (users can change these via /api/calibrate)
+        """시간대 배율 반환."""
         active_params = params if params is not None else self.params
         alpha_map = active_params.alpha_map
         a_morning = alpha_map.get("morning_rush", 1.4)
         a_evening = alpha_map.get("evening_rush", 1.3)
         a_midday = alpha_map.get("midday", 1.0)
-        a_eve = alpha_map.get("evening", 0.9)
+        a_evening_late = alpha_map.get("evening", 0.9)
         a_night = alpha_map.get("night", 0.6)
         a_early = alpha_map.get("early", 0.5)
 
-        # Build anchors from calibrated values
-        # Transition points use linear blends between adjacent periods
-        anchors = [
-            (0, a_night),                                    # midnight
-            (4, a_early),                                    # early morning
-            (6, (a_early + a_midday) / 2),                   # ramping up
-            (7, (a_midday + a_morning) / 2),                 # building to rush
-            (8, a_morning),                                  # morning rush peak
-            (9, (a_morning + a_midday) / 2),                 # post-rush
-            (10, a_midday),                                  # midday start
-            (12, a_midday),                                  # lunch
-            (14, a_midday),                                  # afternoon
-            (17, (a_midday + a_evening) / 2),                # building to evening rush
-            (18, a_evening),                                 # evening rush starts
-            (19, (a_evening + a_evening) / 2 * 1.04),        # evening rush peak (~+4%)
-            (20, (a_evening + a_eve) / 2),                   # post-rush
-            (21, a_eve),                                     # evening
-            (22, (a_eve + a_night) / 2),                     # late evening
-            (23, a_night),                                   # night
-            (24, a_night),                                   # wrap to midnight
-        ]
-
         h = hour % 24
-
-        for i in range(len(anchors) - 1):
-            h1, a1 = anchors[i]
-            h2, a2 = anchors[i + 1]
-            if h1 <= h < h2:
-                ratio = (h - h1) / (h2 - h1)
-                return round(a1 + ratio * (a2 - a1), 2)
-
-        return alpha_map.get("midday", 1.0)
+        if h < 6:
+            return round(a_early, 2)
+        elif h < 9:
+            return round(a_morning, 2)
+        elif h < 12:
+            return round(a_midday, 2)
+        elif h < 18:
+            return round(a_midday, 2)
+        elif h < 21:
+            return round(a_evening, 2)
+        elif h < 23:
+            return round(a_evening_late, 2)
+        return round(a_night, 2)
 
     def _get_intermediate_stations(self, boarding, destination, direction):
         stations = self.station_order
@@ -412,55 +378,28 @@ class SeatScoreEngine:
                 return (stations[:b_idx][::-1] + stations[d_idx:][::-1])
 
     def _get_dow_factor(self, station, dow=None):
-        """
-        Day-of-week correction factor based on exit traffic data.
-
-        Returns a multiplier (e.g., 0.59 for 강남 on weekend, 1.29 for 홍대입구).
-        Defaults to 1.0 if no data or weekday.
-        """
+        """요일 보정 계수 조회."""
         if not dow or not hasattr(self, "_dow_factors") or not self._dow_factors:
             return 1.0
         return self._dow_factors.get((station, dow), 1.0)
 
     def _get_alighting_volume(self, station, hour, direction=None, dow=None):
-        """
-        D(s): alighting volume at station s during hour h.
-
-        Priority:
-        1. Direction-aware 30-min congestion data (if available)
-        2. Hourly alighting cache (backward compatible)
-        3. Fallback: 1.0
-
-        Adjusted by day-of-week factor from exit traffic when dow is provided.
-        """
-        # Try direction-aware 30-min data first
+        """역별 하차량 조회."""
         if self._congestion_30min_cache and direction:
             dir_key = "내선" if ("내선" in str(direction) or "하행" in str(direction)) else "외선"
             val = self._congestion_30min_cache.get((station, dir_key, hour))
             if val is not None:
                 return val * self._get_dow_factor(station, dow)
 
-            # Try without direction specificity
             for key, v in self._congestion_30min_cache.items():
                 if key[0] == station and key[2] == hour:
                     return v * self._get_dow_factor(station, dow)
 
-        # Fallback to hourly cache
         base = self._alighting_cache.get((station, hour), 1.0)
         return base * self._get_dow_factor(station, dow)
 
     def _get_travel_time(self, station_from, station_to, direction=None):
-        """
-        T(s->dest): remaining travel time from station s to destination.
-
-        Direction-aware: on circular Line 2, the travel time depends on
-        which direction the train is going (inner/clockwise vs outer).
-
-        Priority:
-        1. TMAP transit cumulative times (real seconds, direction-aware)
-        2. Distance-based proxy (km, backward compatible)
-        """
-        # Try TMAP cumulative travel times
+        """역 간 이동시간 계산."""
         if self._tt_stations and self._tt_cumulative:
             try:
                 idx_from = self._tt_stations.index(station_from)
@@ -469,9 +408,7 @@ class SeatScoreEngine:
                 pass
             else:
                 cum = self._tt_cumulative
-                total_loop = cum[-1]  # full loop time in seconds
-
-                # Inner (clockwise): cum[to] - cum[from], wrapping around
+                total_loop = cum[-1]
                 inner_time = (cum[idx_to] - cum[idx_from]) % total_loop
                 outer_time = total_loop - inner_time
 
@@ -484,9 +421,8 @@ class SeatScoreEngine:
                 else:
                     tt_sec = min(inner_time, outer_time)
 
-                return max(tt_sec / 60.0, 0.1)  # seconds → minutes
+                return max(tt_sec / 60.0, 0.1)
 
-        # Fallback to distance-based proxy
         if self.distance_df is None:
             return 1.0
         try:
@@ -501,14 +437,7 @@ class SeatScoreEngine:
         return 1.0
 
     def _resolve_sk_key(self, station, hour, dow=None):
-        """
-        Resolve the best available SK API cache key for (station, hour, dow).
-
-        Priority:
-        1. Exact (station, hour, dow) match
-        2. Weekday fallback: (station, hour, "MON") for weekday dow
-        3. Nearest rush hour: interpolate from closest rush-hour data
-        """
+        """SK 캐시 조회 키 정리."""
         dow_key = dow if dow else "MON"
         # Weekdays share similar patterns → fallback to MON
         weekday_codes = ("MON", "TUE", "WED", "THU", "FRI")
@@ -518,17 +447,7 @@ class SeatScoreEngine:
         return station, hour, dow_key
 
     def _find_nearest_rush_data(self, cache, station, hour, dow_key):
-        """
-        When exact hour not in cache, find nearest rush hour data and interpolate.
-
-        Rush hours in cache: 7, 8, 9, 17, 18, 19
-        For non-rush hours, blend nearest rush data with distance-based decay.
-
-        NOTE: As of 2025, getoff_rate and car_congestion are 100% complete for
-        weekday hours, so this method is primarily used for train_congestion
-        (248 entries, rush hours only). Kept for backward compatibility and
-        non-weekday queries.
-        """
+        """가까운 러시아워 데이터 조회."""
         if not cache:
             return None
 
@@ -557,18 +476,7 @@ class SeatScoreEngine:
         return data, decay
 
     def _get_car_weight(self, station, car_no, direction, hour=None, dow=None):
-        """
-        w(c,s): per-car alighting weight at station s.
-
-        As of 2025, SK API getoff_rate data is 100% complete for all 43 stations
-        x 19 hours (05-23) on weekdays (817 entries). Direct lookup should always
-        succeed for weekday queries. Fallback chain retained for non-weekday dow
-        or unexpected edge cases.
-
-        Priority:
-        1. SK API getOffCarRate - exact match (should always hit for MON)
-        2. Empirical distribution + exit count adjustment (fallback)
-        """
+        """칸별 하차 가중치 계산."""
         # SK API getoff rate - complete coverage for weekday hours
         if self._getoff_rate_cache and hour is not None:
             _, h, dk = self._resolve_sk_key(station, hour, dow)
@@ -584,15 +492,7 @@ class SeatScoreEngine:
         return self._get_empirical_weight(station, car_no, direction)
 
     def _get_empirical_weight(self, station, car_no, direction):
-        """
-        Empirically-derived per-car weight, adjusted by station exit layout.
-
-        Uses the global alighting distribution from SK API data (195 entries,
-        41 stations) as a prior, then adjusts based on how many exits are
-        near each car at this station (correlation r=0.45).
-
-        Much more realistic than arbitrary facility-type heuristics.
-        """
+        """경험적 분포 기반 칸 가중치."""
         base = self.EMPIRICAL_CAR_DIST[car_no - 1]
 
         # Station-specific exit count adjustment
@@ -612,11 +512,7 @@ class SeatScoreEngine:
         return base
 
     def _get_facility_score(self, station, car_no, direction):
-        """
-        Facility-based structural weight for car c at station s.
-
-        Returns a value from [0, 1] range.
-        """
+        """시설 기반 칸 점수."""
         dir_key = "하행" if ("내선" in str(direction) or "하행" in str(direction)) else "상행"
 
         car_score = self._facility_cache.get((station, dir_key, car_no), 0.0)
@@ -628,20 +524,7 @@ class SeatScoreEngine:
         return car_score / total_score
 
     def _get_boarding_penalty(self, car_no, boarding_station, hour, direction, dow=None):
-        """
-        B(c,h): boarding congestion penalty per car.
-
-        As of 2025, SK API car_congestion data is 100% complete for all 43 stations
-        x 19 hours (05-23) on weekdays (817 entries). Direct lookup should always
-        succeed for weekday queries.
-
-        Priority:
-        1. SK API congestionCar - exact match (should always hit for MON)
-        2. Facility-based estimation (fallback for non-weekday or missing cache)
-
-        When train_congestion data is available, it scales the penalty
-        by the actual train-level crowding (higher train congestion → bigger penalty).
-        """
+        """탑승 시 혼잡 패널티 계산."""
         base_penalty = None
 
         # SK API car congestion - complete coverage for weekday hours
@@ -664,17 +547,7 @@ class SeatScoreEngine:
         return base_penalty * train_scale
 
     def _get_train_congestion_scale(self, station, hour, dow=None):
-        """
-        Use train-level congestion to scale penalties/factors.
-
-        Returns a multiplier around 1.0:
-        - train congestion > average → scale > 1.0 (more crowded)
-        - train congestion < average → scale < 1.0 (less crowded)
-        - no data → 1.0 (neutral)
-
-        Average train congestion across all cached data is ~50 (typical %),
-        so we normalize relative to that baseline.
-        """
+        """열차 단위 혼잡 스케일 계산."""
         if not self._train_congestion_cache:
             return 1.0
 
@@ -701,13 +574,7 @@ class SeatScoreEngine:
         return max(0.5, min(2.0, scale))
 
     def _get_sitting_fraction(self, station, hour, direction=None, dow=None):
-        """
-        Estimate what fraction of alighting passengers were seated.
-
-        Uses train-level congestion as a proxy:
-        - low congestion: most alighters were seated (~0.85)
-        - high congestion: seat-limited floor (~54/160 ≈ 0.34)
-        """
+        """하차 인원 중 착석 비율 추정."""
         SEATS_PER_CAR = 54
         MAX_CAPACITY = 160
         MIN_SIT_FRACTION = SEATS_PER_CAR / MAX_CAPACITY
@@ -724,16 +591,7 @@ class SeatScoreEngine:
         return 0.85 - t * (0.85 - MIN_SIT_FRACTION)
 
     def _get_per_station_competitors(self, car_no, station, hour, direction=None, dow=None):
-        """
-        Estimate standing competitors for newly freed seats in car c at station s.
-
-        Combines train-level absolute crowding with station/hour-specific
-        per-car congestion distribution when available.
-
-        DOW correction: Weekends have fewer passengers overall, so competitor
-        count is scaled by the same dow_factor used for alighting volume.
-        This ensures consistency — fewer alighters AND fewer competitors on weekends.
-        """
+        """역별 경쟁자 수 추정."""
         scale = self._get_train_congestion_scale(station, hour, dow)
         congestion_pct = scale * 50.0
         total_pax_per_car = (congestion_pct / 100.0) * self.MAX_CAPACITY
@@ -759,24 +617,7 @@ class SeatScoreEngine:
         return max(0.5, standing)
 
     def _get_load_factors(self, intermediates, direction, hour, dow=None):
-        """
-        L(c): per-car relative load factor (competition coefficient).
-
-        Represents how crowded car c is relative to average.
-        L(c) > 1 → more crowded → harder to get a freed seat.
-        L(c) < 1 → less crowded → easier to get a freed seat.
-
-        Raw L values are clamped to [0.3, 3.0] to prevent extreme outliers,
-        then dampened via GAMMA: L_eff = L^GAMMA (in compute_seatscore).
-
-        As of 2025, SK API car_congestion data is 100% complete for weekdays.
-        Direct lookup across intermediate stations should always succeed for MON.
-
-        Priority:
-        1. SK API congestionCar - direct lookup (complete for weekday hours)
-        2. Average w(c,s) across intermediate stations (facility-based proxy)
-        3. Uniform (1.0 for all cars)
-        """
+        """칸별 상대 혼잡 계수 계산."""
         L_MIN, L_MAX = 0.3, 3.0
         loads = [0.0] * self.TOTAL_CARS
         _, _, dk = self._resolve_sk_key("", hour, dow)
@@ -857,16 +698,7 @@ class SeatScoreEngine:
 
 
     def compute_seatscore(self, boarding, destination, hour, direction, dow=None):
-        """
-        Compute SeatScore for each car.
-
-        Returns pd.DataFrame with columns: car, benefit, penalty, score_raw, score, rank
-        Also includes station_contributions for explanation UI.
-
-        Args:
-            dow: Day of week code (MON/TUE/WED/THU/FRI/SAT/SUN).
-                 Adjusts D(s) using exit traffic patterns.
-        """
+        """칸별 SeatScore 계산."""
         params = self.params
         intermediates = self._get_intermediate_stations(boarding, destination, direction)
         alpha = self._get_alpha(hour, params=params)
