@@ -22,10 +22,7 @@ FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """
-    Rate limiting: 60 requests/min per IP for /api/* endpoints.
-    Backend: Redis (REDIS_URL 설정 시) or in-memory (기본).
-    """
+    """IP별 분당 60회 요청 제한 미들웨어"""
     def __init__(self, app, requests_per_minute: int = 60):
         super().__init__(app)
         self.requests_per_minute = requests_per_minute
@@ -63,10 +60,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Metropy", version="1.0.0", lifespan=lifespan)
 
-# Middleware order: Starlette processes in REVERSE add order.
-# Added last = processed first. So: CORS first (outermost), then rate limit.
 
-# CORS (outermost — handles preflight before rate limiting)
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000").split(",")
 app.add_middleware(
     CORSMiddleware,
@@ -76,10 +70,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# GZip compression for responses > 500 bytes
 app.add_middleware(GZipMiddleware, minimum_size=500)
 
-# Rate limiting (after CORS — won't block preflight)
 app.add_middleware(RateLimitMiddleware, requests_per_minute=60)
 
 app.include_router(recommend.router, prefix="/api", tags=["recommend"])
@@ -91,23 +83,6 @@ app.include_router(stability.router, prefix="/api", tags=["stability"])
 
 app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
-
-@app.middleware("http")
-async def static_cache_control(request: Request, call_next):
-    """Add Cache-Control headers for static assets."""
-    response = await call_next(request)
-    path = request.url.path
-    if path.startswith("/static/"):
-        # Immutable assets (fonts, images) — cache aggressively
-        if any(path.endswith(ext) for ext in (".woff2", ".woff", ".ttf", ".png", ".jpg", ".svg", ".ico")):
-            response.headers["Cache-Control"] = "public, max-age=604800, immutable"
-        # CSS/JS — cache with revalidation (1 hour)
-        elif any(path.endswith(ext) for ext in (".css", ".js")):
-            response.headers["Cache-Control"] = "public, max-age=3600, must-revalidate"
-        # Everything else (HTML, JSON) — short cache
-        else:
-            response.headers["Cache-Control"] = "public, max-age=300"
-    return response
 
 
 @app.get(

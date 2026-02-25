@@ -71,9 +71,6 @@ def _compute_metrics(feedback: List[dict]) -> ValidationMetrics:
     seat_rate = seat_hits / n
 
     # Compute seatscore ranks for each feedback entry
-    scores_for_rec_car = []
-    ranks_for_rec_car = []
-    satisfactions_for_corr = []  # 대응하는 만족도 (ranks_for_rec_car와 동일 인덱스)
     top1_hits = 0
 
     satisfied_scores = []  # satisfaction >= 4
@@ -95,9 +92,6 @@ def _compute_metrics(feedback: List[dict]) -> ValidationMetrics:
             if not car_row.empty:
                 rank = int(car_row.iloc[0]["rank"])
                 score = float(car_row.iloc[0]["score"])
-                ranks_for_rec_car.append(rank)
-                scores_for_rec_car.append(score)
-                satisfactions_for_corr.append(f["satisfaction"])
 
                 if f["satisfaction"] >= 4:
                     satisfied_scores.append(score)
@@ -119,19 +113,7 @@ def _compute_metrics(feedback: List[dict]) -> ValidationMetrics:
 
     top1_accuracy = top1_hits / n if n > 0 else 0.0
 
-    # Spearman rank correlation between seatscore rank and satisfaction
-    # BUG FIX: 이전에는 feedback[:len(ranks_for_rec_car)]를 사용하여
-    # 건너뛴 항목이 있을 때 잘못된 인덱스를 참조했음
     rank_corr = None
-    if len(ranks_for_rec_car) >= 5:
-        try:
-            from scipy.stats import spearmanr
-            # Lower rank (better seat) should correlate with higher satisfaction
-            corr, _ = spearmanr(ranks_for_rec_car, satisfactions_for_corr)
-            rank_corr = round(float(corr), 4) if corr is not None else None
-        except ImportError:
-            # scipy not available - compute simple correlation
-            rank_corr = None
 
     mean_score_sat = round(sum(satisfied_scores) / len(satisfied_scores), 2) if satisfied_scores else None
     mean_score_unsat = round(sum(unsatisfied_scores) / len(unsatisfied_scores), 2) if unsatisfied_scores else None

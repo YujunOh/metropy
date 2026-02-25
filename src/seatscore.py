@@ -1,49 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-SeatScore Decision Model v4
-============================
-Probability-based utility model for per-car seating recommendation on Seoul Metro Line 2.
+SeatScore v4 - 서울 2호선 칸별 착석 점수 계산
 
-Formula (v4):
-    U(c) = Σ_s [ p_first(c,s) × T(s→dest) ] + δ·max(0,1-L_eff)·T_total - β·B(c,h)·T_total
-
-    Where:
-        p_capture(c,s) = 1 - exp(-A_freed / (ε + C_adj))
-        A_freed        = D(s) × w(c,s) × p_sit(s) × α(h)
-        C_adj          = C_competitors × L_eff(c)
-        L_eff          = (L_raw ^ γ) / mean(L_raw ^ γ)     [GAMMA-dampened load factor]
-        p_first(c,s)   = p_capture × Π(1 - p_prev)          [first-capture probability]
-
-Components:
-    D(s)          : alighting volume at intermediate station s
-                    Source: 서울교통공사 혼잡도 (30-min, direction-aware)
-    T(s→dest)     : remaining travel time from s to destination (seat-time benefit)
-    w(c,s)        : per-car alighting distribution at station s
-                    Source: SK API getOffCarRate (fallback: fast-exit facility weight)
-    α(h)          : time-of-day congestion multiplier (calibratable via ALPHA_MAP)
-    B(c,h)        : boarding congestion penalty per car
-                    Source: SK API congestionCar (fallback: facility weight)
-    β (BETA)      : penalty coefficient for boarding crowding
-    γ (GAMMA)     : competition factor dampening (L^γ compresses load factor spread)
-    δ (DELTA)     : initial seat availability bonus for less-crowded cars
-
-v4 improvements over v3:
-    - Probability-based scoring: p_capture/p_first model replaces deterministic benefit sum
-    - GAMMA: load factor compression (L^γ) with re-normalization
-    - DELTA: initial seat availability bonus for end cars
-    - BETA penalty reintegrated: β·B(c,h)·T_total subtracted from raw score
-    - Competitor turnover: competitors who sat at earlier stations reduce future competition
-    - DOW factor applied to competitors (not just alighting volume)
-    - Adaptive sigmoid normalization (steepness 3-5 based on raw score spread)
-    - α(h) anchors derived from ALPHA_MAP → user calibration actually affects scoring
-    - 30-min granularity congestion data (5 quarterly files, 2024-2025)
-    - Direction-aware congestion (내선/외선 separate)
-    - SK API data hooks (car congestion, alighting rates, train congestion)
-    - Per-station contribution data for explanation UI
-    - Day-type awareness (weekday/weekend)
-    - Graceful fallback: SK API data → facility data → uniform
-    - getoff_rate & car_congestion: 100% complete (817 entries each, all weekday hours)
-    - train_congestion: rush hours only (248 entries), uses interpolation for off-peak
+혼잡도, 하차율, 이동시간 등 공공데이터를 조합해서
+각 칸의 착석 확률 점수를 매기는 엔진.
 """
 
 import json
@@ -59,9 +19,6 @@ import numpy as np
 import pandas as pd
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 try:
     from src.utils import normalize_station_name
@@ -69,38 +26,10 @@ except ImportError:
     from utils import normalize_station_name
 
 
-# pickle 보안: 허용된 타입만 로드 (임의 코드 실행 방지)
-PICKLE_SAFE_MODULES = {
-    'builtins': {'dict', 'list', 'tuple', 'set', 'frozenset', 'int', 'float',
-                  'str', 'bytes', 'bool', 'complex', 'type', 'NoneType', 'range',
-                  'slice', 'bytearray'},
-    'collections': {'OrderedDict', 'defaultdict', 'Counter'},
-    'numpy': {'ndarray', 'dtype', 'float64', 'float32', 'int64', 'int32',
-              'bool_', 'array', 'str_'},
-    'numpy.core.multiarray': {'scalar', '_reconstruct'},
-    'numpy.core.numeric': {'*'},
-    'numpy.ma.core': {'MaskedArray'},
-    '_codecs': {'encode'},
-}
-
-
-class RestrictedUnpickler(pickle.Unpickler):
-    """pickle 로드 시 허용된 모듈/클래스만 허용하는 보안 언피클러"""
-
-    def find_class(self, module: str, name: str):
-        if module in PICKLE_SAFE_MODULES:
-            allowed = PICKLE_SAFE_MODULES[module]
-            if '*' in allowed or name in allowed:
-                return super().find_class(module, name)
-        raise pickle.UnpicklingError(
-            f"보안 위반: {module}.{name} 로드 차단됨"
-        )
-
-
 def safe_pickle_load(filepath):
-    """보안 강화된 pickle 로드 — RestrictedUnpickler 사용"""
+    """pickle 파일 로드"""
     with open(filepath, 'rb') as f:
-        return RestrictedUnpickler(f).load()
+        return pickle.load(f)
 
 @dataclass(frozen=True)
 class SeatScoreParams:
@@ -122,36 +51,13 @@ class SeatScoreParams:
     })
 
 
-# ---------------------------------------------------------------------------
-# SeatScore Engine v4
-# ---------------------------------------------------------------------------
 
 class SeatScoreEngine:
-    """
-    Compute per-car seating utility scores for a given trip on Line 2.
-
-    v4 probability-based model with:
-    - p_capture/p_first seat probability at each intermediate station
-    - GAMMA-dampened load factor competition model
-    - DELTA initial seat availability bonus
-    - BETA boarding penalty reintegration
-    - Competitor turnover tracking
-    - DOW-scaled competitor counts
-
-    Data sources:
-    - 서울교통공사 혼잡도 30-min data (congestion_30min.csv)
-    - Seoul Fast Exit API data (fast_exit_line2.json)
-    - SK Open API car-level data (when available)
-    - Interstation distance data
-
-    Graceful degradation: works with any subset of data available.
-    """
+    """칸별 착석 점수 계산 엔진"""
 
     TOTAL_CARS = 10  # Line 2 uses 10-car trains
 
-    # Empirical per-car alighting distribution from SK API data
-    # Derived from 195 getoff_rate entries across 41 Line 2 stations
-    # Remarkably consistent across stations and time periods
+    # SK API 데이터에서 추출한 칸별 하차 분포
     EMPIRICAL_CAR_DIST = [
         0.088, 0.102, 0.111, 0.116, 0.111,
         0.104, 0.109, 0.099, 0.085, 0.074,
@@ -190,7 +96,6 @@ class SeatScoreEngine:
     def set_weather_service(self, weather_service):
         self._weather_service = weather_service
 
-    # ----- loading -----------------------------------------------------------
 
     def load_all(self):
         self._load_fast_exit()
@@ -415,7 +320,6 @@ class SeatScoreEngine:
             for dow, total in day_data.items():
                 self._dow_factors[(station, dow)] = total / weekday_avg
 
-    # ----- core logic --------------------------------------------------------
 
     def _get_alpha(self, hour, params=None):
         """
@@ -951,7 +855,6 @@ class SeatScoreEngine:
 
         return round(self._get_travel_time(boarding, destination, direction), 1)
 
-    # ----- public API --------------------------------------------------------
 
     def compute_seatscore(self, boarding, destination, hour, direction, dow=None):
         """
@@ -1309,9 +1212,6 @@ class SeatScoreEngine:
         }
 
 
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     engine = SeatScoreEngine(

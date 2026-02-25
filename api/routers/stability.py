@@ -1,10 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-Rank Stability Analysis Router
-===============================
-Perturbs model parameters and checks how often the "best car" ranking changes.
-A stable model should maintain consistent rankings under reasonable perturbations.
-"""
+"""추천 순위 안정성 분석"""
 import random
 from dataclasses import replace
 from typing import List
@@ -46,15 +41,13 @@ async def rank_stability(
         base_best = int(base_df.iloc[0]["car"])
 
         # Collect perturbed results
-        rng = random.Random(42)
         all_ranks = {c: [] for c in range(1, 11)}
         all_scores = {c: [] for c in range(1, 11)}
         best_car_changes = 0
 
         for _ in range(n_perturbations):
             # Perturb alpha by ±20%
-            factor = 1.0 + rng.uniform(-0.2, 0.2)
-            # Atomic params swap: scale alpha_map values instead of monkey-patching _get_alpha
+            factor = 1.0 + random.uniform(-0.2, 0.2)
             original_params = engine.params
             perturbed_alpha_map = {
                 k: round(v * factor, 4)

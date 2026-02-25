@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 from dataclasses import replace
-from fastapi import APIRouter, HTTPException, Header, Depends
+from fastapi import APIRouter, HTTPException
 from api.schemas import (
     CalibrationRequest,
     CalibrationResponse,
@@ -16,13 +16,6 @@ from typing import List, Optional
 router = APIRouter()
 
 
-def verify_api_key(x_api_key: Optional[str] = Header(None)) -> None:
-    """API Key 검증 (env var METROPY_API_KEY가 설정된 경우만)"""
-    api_key = os.getenv("METROPY_API_KEY")
-    if api_key:  # env var가 설정된 경우만 검증
-        if not x_api_key or x_api_key != api_key:
-            raise HTTPException(status_code=403, detail="유효하지 않은 API 키입니다")
-
 
 @router.post(
     "/calibrate",
@@ -32,7 +25,7 @@ def verify_api_key(x_api_key: Optional[str] = Header(None)) -> None:
     "런타임에 조정합니다. 변경 시 추천 캠시가 자동 무효화됩니다.",
     response_description="적용된 파라미터 값",
 )
-async def calibrate(req: CalibrationRequest, _: None = Depends(verify_api_key)):
+async def calibrate(req: CalibrationRequest):
     """하이퍼파라미터를 런타임에 조정한다."""
     engine = registry.get_engine()
 
